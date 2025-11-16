@@ -1,8 +1,8 @@
 # Smarter Horeca App
 
 - clone repository
-- run: ```js npm install```
-- run: ```js npm run dev```
+- run: ``` npm install```
+- run: ``` npm run dev```
 
 Your app running on 
 
