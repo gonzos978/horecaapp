@@ -2,6 +2,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function AdminHeader() {
+    // @ts-ignore
     const { logout } = useAuth();
     const navigate = useNavigate();
 

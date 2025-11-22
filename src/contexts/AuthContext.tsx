@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../fb/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
 interface AuthContextType {
@@ -8,6 +8,7 @@ interface AuthContextType {
     loading: boolean;
     isAdmin: boolean;
     userData: any;
+    logout: () => Promise<void>; // <- add logout here
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
     loading: true,
     isAdmin: false,
     userData: null,
+    logout: async () => {}, // placeholder
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -37,7 +39,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                         setUserData(data);
                         setIsAdmin(!!data.isAdmin);
                     } else {
-                        // If user document doesn't exist, treat as non-admin
                         setUserData(null);
                         setIsAdmin(false);
                     }
@@ -55,8 +56,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return () => unsubscribe();
     }, []);
 
+    // Add logout function
+    const logout = async () => {
+        try {
+            await signOut(auth);
+            setUser(null);
+            setUserData(null);
+            setIsAdmin(false);
+        } catch (err) {
+            console.error("Logout failed", err);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, loading, isAdmin, userData }}>
+        <AuthContext.Provider value={{ user, loading, isAdmin, userData, logout }}>
             {children}
         </AuthContext.Provider>
     );
