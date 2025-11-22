@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { signInWithEmailAndPassword, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { auth } from "../fb/firebase";
+import {auth, db} from "../fb/firebase";
 import "../styles/AdminLogin.css";
+import {doc, getDoc} from "firebase/firestore";
 
 export default function AdminLogin() {
     const [email, setEmail] = useState("");
@@ -14,10 +15,26 @@ export default function AdminLogin() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        setErrorMsg(""); setResetMsg(""); setLoading(true);
-        try { await signInWithEmailAndPassword(auth, email, password); navigate("/admin"); }
-        catch (error: any) { setErrorMsg(error.message || "Login failed"); setLoading(false); }
+        setErrorMsg(""); setLoading(true);
+
+        try {
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            const docSnap = await getDoc(doc(db, "users", user.uid));
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.isAdmin) navigate("/admin/dashboard");
+                else navigate("/app/home");
+            } else {
+                setErrorMsg("User profile not found.");
+            }
+        } catch (error: any) {
+            setErrorMsg(error.message || "Login failed");
+            setLoading(false);
+        }
     };
+
 
     const handleForgotPassword = async () => {
         setResetMsg(""); setErrorMsg("");
