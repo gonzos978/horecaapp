@@ -12,6 +12,8 @@ import UserRoute from "./routes/UserRoute";
 import UserLayout from "./layouts/UserLayout";
 import BusinessHome from "./placeholders/BusinessHome";
 import Workers from "./placeholders/Workers";
+import AddCustomer from "./pages/admin/AddCustomer";
+import CustomersList from "./pages/admin/CustomersList";
 
 // @ts-ignore
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -36,8 +38,8 @@ export default function App() {
                     {/* Admin area */}
                     <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
                         <Route path="dashboard" element={<Dashboard />} />
-                        <Route path="users" element={<Users />} />
-                        <Route path="users/add" element={<AddUser />} />
+                        <Route path="customers/add" element={<AddCustomer />} />
+                        <Route path="users" element={<CustomersList />} />
                         <Route path="settings" element={<Settings />} />
                         <Route index element={<Navigate to="dashboard" replace />} />
                     </Route>

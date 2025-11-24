@@ -20,9 +20,11 @@ export default function AdminSidebar() {
             <NavLink to="/admin/dashboard" style={linkStyle}>
                 Dashboard
             </NavLink>
-
+            <NavLink to="/admin/customers/add" style={linkStyle}>
+                Add Customer
+            </NavLink>
             <NavLink to="/admin/users" style={linkStyle}>
-                Users
+                Customers
             </NavLink>
 
             <NavLink to="/admin/settings" style={linkStyle}>

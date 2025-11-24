@@ -7,14 +7,16 @@ interface AuthContextType {
     user: any;
     loading: boolean;
     isAdmin: boolean;
+    isSuperAdmin: boolean; // <- novo
     userData: any;
-    logout: () => Promise<void>; // <- add logout here
+    logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
     isAdmin: false,
+    isSuperAdmin: false,
     userData: null,
     logout: async () => {}, // placeholder
 });
@@ -23,12 +25,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false);
     const [userData, setUserData] = useState<any>(null);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setLoading(true);
             if (currentUser) {
+                console.log("User logged in:", currentUser.uid);
                 setUser(currentUser);
 
                 try {
@@ -37,18 +41,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         setUserData(data);
-                        setIsAdmin(!!data.isAdmin);
+                        setIsAdmin(!!data?.isAdmin);
+
+                        // provjera UID super-admina
+                        const SUPER_ADMIN_UID = "goq3MIVP0IaPZ7VCRZjDF9MxgsN2";
+                        setIsSuperAdmin(currentUser.uid === SUPER_ADMIN_UID);
+
                     } else {
                         setUserData(null);
                         setIsAdmin(false);
+                        setIsSuperAdmin(false);
                     }
                 } catch (err) {
                     console.error("Failed to fetch user data", err);
+                    setUserData(null);
+                    setIsAdmin(false);
+                    setIsSuperAdmin(false);
                 }
             } else {
                 setUser(null);
                 setUserData(null);
                 setIsAdmin(false);
+                setIsSuperAdmin(false);
             }
             setLoading(false);
         });
@@ -56,20 +70,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return () => unsubscribe();
     }, []);
 
-    // Add logout function
+    // logout funkcija
     const logout = async () => {
         try {
             await signOut(auth);
             setUser(null);
             setUserData(null);
             setIsAdmin(false);
+            setIsSuperAdmin(false);
         } catch (err) {
             console.error("Logout failed", err);
         }
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, isAdmin, userData, logout }}>
+        <AuthContext.Provider value={{ user, loading, isAdmin, isSuperAdmin, userData, logout }}>
             {children}
         </AuthContext.Provider>
     );
