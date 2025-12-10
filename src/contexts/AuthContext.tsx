@@ -7,7 +7,7 @@ interface AuthContextType {
     user: any;
     loading: boolean;
     isAdmin: boolean;
-    isSuperAdmin: boolean; // <- novo
+    isSuperAdmin: boolean;
     userData: any;
     logout: () => Promise<void>;
 }
@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthContextType>({
     isAdmin: false,
     isSuperAdmin: false,
     userData: null,
-    logout: async () => {}, // placeholder
+    logout: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -32,7 +32,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setLoading(true);
             if (currentUser) {
-                console.log("User logged in:", currentUser.uid);
                 setUser(currentUser);
 
                 try {
@@ -41,9 +40,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         setUserData(data);
-                        setIsAdmin(!!data?.isAdmin);
+                        setIsAdmin(!!data?.role && data.role === "admin");
 
-                        // provjera UID super-admina
+                        // Super-admin UID
                         const SUPER_ADMIN_UID = "goq3MIVP0IaPZ7VCRZjDF9MxgsN2";
                         setIsSuperAdmin(currentUser.uid === SUPER_ADMIN_UID);
 
@@ -70,7 +69,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return () => unsubscribe();
     }, []);
 
-    // logout funkcija
     const logout = async () => {
         try {
             await signOut(auth);

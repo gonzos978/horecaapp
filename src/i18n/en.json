@@ -1,0 +1,195 @@
+{
+  "app": {
+    "title": "Smarter HoReCa AI Supreme",
+    "subtitle": "Pametno upravljanje za hotele, restorane i više"
+  },
+  "nav": {
+    "dashboard": "Kontrolna tabla",
+    "workers": "Radnici",
+    "artikli": "Artikli",
+    "menu": "Meni",
+    "alerts": "Obaveštenja",
+    "checklists": "Check lista",
+    "training": "Obuka i AI testovi",
+    "settings": "Podešavanja",
+    "voice": "Glasovne porudžbine",
+    "anonymousReports": "Anonimne prijave"
+  },
+  "kpi": {
+    "revenue": "Dnevni prihod",
+    "theft": "Detektovana krađa",
+    "waste": "Otpad",
+    "turnover": "Rizik fluktuacije",
+    "performance": "Prosečan učinak",
+    "orders": "Porudžbine danas"
+  },
+  "workers": {
+    "title": "Upravljanje radnicima",
+    "leaderboard": "Rang lista",
+    "code": "Šifra",
+    "name": "Ime",
+    "position": "Pozicija",
+    "score": "Skor",
+    "shifts": "Smene",
+    "onTime": "Na vreme",
+    "status": "Status",
+    "active": "Aktivan",
+    "inactive": "Neaktivan"
+  },
+  "artikli": {
+    "title": "Artikli na stanju",
+    "name": "Naziv",
+    "category": "Kategorija",
+    "quantity": "Količina",
+    "unit": "Jedinica",
+    "expected": "Očekivano",
+    "actual": "Stvarno",
+    "variance": "Razlika",
+    "lastChecked": "Poslednja provera",
+    "critical": "Kritično",
+    "warning": "Upozorenje",
+    "ok": "U redu"
+  },
+  "menu": {
+    "title": "Upravljanje menijem",
+    "name": "Naziv",
+    "category": "Kategorija",
+    "price": "Cena",
+    "cost": "Trošak",
+    "margin": "Marža",
+    "available": "Dostupno",
+    "prepTime": "Vreme pripreme"
+  },
+  "alerts": {
+    "title": "Obaveštenja",
+    "unread": "Nepročitano",
+    "severity": {
+      "LOW": "Niska",
+      "MEDIUM": "Srednja",
+      "HIGH": "Visoka",
+      "CRITICAL": "Kritična"
+    },
+    "markRead": "Označi kao pročitano",
+    "resolve": "Reši"
+  },
+  "voice": {
+    "title": "Glasovne porudžbine",
+    "record": "Snimi porudžbinu",
+    "recording": "Snimanje...",
+    "processing": "Obrađujem...",
+    "transcript": "Transkript",
+    "confidence": "Pouzdanost",
+    "table": "Sto",
+    "items": "Stavke",
+    "urgent": "Hitno"
+  },
+  "checklist": {
+    "title": "Proverne liste",
+    "opening": "Otvaranje",
+    "closing": "Zatvaranje",
+    "haccp": "HACCP",
+    "complete": "Završi",
+    "completed": "Završeno",
+    "pending": "Na čekanju",
+    "photoRequired": "Fotografija obavezna",
+    "uploadPhoto": "Dodaj fotografiju"
+  },
+  "training": {
+    "title": "Obuka i AI testovi",
+    "positions": "Pozicije",
+    "modules": "Moduli",
+    "duration": "Trajanje",
+    "score": "Rezultat",
+    "passed": "Položio",
+    "failed": "Pao",
+    "failedCritical": "Kritičan pad",
+    "startQuiz": "Započni test",
+    "submitQuiz": "Pošalji test",
+    "testResults": "Rezultati testova",
+    "certificate": "Sertifikat",
+    "retestDate": "Ponovi test",
+    "actionRequired": "Potrebna akcija"
+  },
+  "anonymousReports": {
+    "title": "Anonimne prijave",
+    "reportType": "Tip prijave",
+    "credibility": "Pouzdanost",
+    "senderProfile": "Profil pošiljaoca",
+    "reliable": "Pouzdan",
+    "unreliable": "Nepouzdan",
+    "average": "Prosečan",
+    "newReport": "Nova prijava",
+    "investigating": "Istraga",
+    "resolved": "Rešeno",
+    "dismissed": "Odbijeno",
+    "theft": "Krađa",
+    "harassment": "Maltretiranje",
+    "guest_complaint": "Pritužba gosta",
+    "haccp_critical": "HACCP kritično",
+    "collusion": "Dogovor",
+    "safety": "Bezbednost",
+    "fraud": "Prevara"
+  },
+  "voiceGap": {
+    "title": "AI Voice Gap Detection",
+    "detected": "Detektovano",
+    "voiceOrders": "Voice porudžbine",
+    "posOrders": "POS kucane",
+    "gapItems": "Nedostaje",
+    "estimatedLoss": "Procenjen gubitak",
+    "confidence": "Pouzdanost"
+  },
+  "turnover": {
+    "title": "Rizik odlaska",
+    "workersAtRisk": "Radnici u riziku",
+    "probability": "Verovatnoća",
+    "estimatedDays": "Procenjeni dani",
+    "sentimentScore": "Sentiment skor",
+    "evidence": "Dokazi"
+  },
+  "collusion": {
+    "title": "Dogovor između radnika",
+    "worker1": "Radnik 1",
+    "worker2": "Radnik 2",
+    "collusionType": "Tip dogovora",
+    "evidenceType": "Tip dokaza",
+    "estimatedLoss": "Procenjen gubitak"
+  },
+  "settings": {
+    "title": "Podešavanja",
+    "language": "Jezik",
+    "selectLanguage": "Izaberi jezik",
+    "serbian": "Srpski",
+    "croatian": "Hrvatski",
+    "bosnian": "Bosanski",
+    "english": "Engleski",
+    "german": "Nemački",
+    "notifications": "Obaveštenja",
+    "theme": "Tema",
+    "save": "Sačuvaj"
+  },
+  "geofence": {
+    "title": "Geofence mapa",
+    "zones": "Zone",
+    "checkIn": "Prijavi se",
+    "checkOut": "Odjavi se",
+    "insideZone": "Unutar zone",
+    "outsideZone": "Izvan zone",
+    "radius": "Radijus"
+  },
+  "common": {
+    "save": "Sačuvaj",
+    "cancel": "Otkaži",
+    "delete": "Obriši",
+    "edit": "Izmeni",
+    "add": "Dodaj",
+    "search": "Pretraži",
+    "filter": "Filtriraj",
+    "export": "Izvezi",
+    "loading": "Učitavanje...",
+    "error": "Greška",
+    "success": "Uspeh",
+    "yes": "Da",
+    "no": "Ne"
+  }
+}

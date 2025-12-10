@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { signInWithEmailAndPassword, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { auth, db } from "../fb/firebase";
+import { auth, db } from "../../fb/firebase.ts";
 import { doc, getDoc } from "firebase/firestore";
 import "../styles/AdminLogin.css";
 

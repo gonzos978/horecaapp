@@ -1,12 +1,13 @@
 import React, { useState } from "react";
-import { db } from "../../fb/firebase";
+import { useNavigate } from "react-router-dom";
+import { auth, db } from "../../fb/firebase";
 import { collection, addDoc, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import { useAuth } from "../../contexts/AuthContext";
-import { useNavigate } from "react-router-dom"; // <--- import
 
 export default function AddCustomer() {
     const { isSuperAdmin, user } = useAuth();
-    const navigate = useNavigate(); // <--- hook za navigaciju
+    const navigate = useNavigate();
     const [form, setForm] = useState({
         customerName: "",
         address: "",
@@ -14,12 +15,18 @@ export default function AddCustomer() {
         email: "",
         adminName: "",
         adminEmail: "",
-        adminPassword: ""
+        adminPassword: "",
+        adminRole: "owner", // default role
     });
     const [loading, setLoading] = useState(false);
 
     if (!user) return <p>Please log in to access this page.</p>;
     if (!isSuperAdmin) return <p>You do not have permission to add customers.</p>;
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setForm((prev) => ({ ...prev, [name]: value }));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,36 +39,60 @@ export default function AddCustomer() {
         }
 
         try {
-            // 1️⃣ create customer document
+            // 1️⃣ Create admin Auth user
+            const userCredential = await createUserWithEmailAndPassword(auth, form.adminEmail, form.adminPassword);
+            const adminUid = userCredential.user.uid;
+
+            // 2️⃣ Create customer document
             const customerRef = await addDoc(collection(db, "customers"), {
                 name: form.customerName,
                 address: form.address,
                 phone: form.phone,
                 email: form.email,
                 createdAt: serverTimestamp(),
-                createdBy: user.uid
+                createdBy: user.uid,
             });
 
-            // 2️⃣ create "admin placeholder" document
-            await setDoc(doc(db, "users", form.adminEmail), {
-                role: "admin",
+            // 3️⃣ Create admin user document with role
+            // NOTE: Removed the inner try/catch block as we are already in one.
+            // **FIX:** Use form.adminRole instead of hardcoding "admin".
+            await setDoc(doc(db, "users", adminUid), {
+                role: form.adminRole, // ✅ Using the role from the form
                 customerId: customerRef.id,
-                email: form.adminEmail,
                 name: form.adminName,
-                passwordPlaceholder: form.adminPassword,
-                createdAt: serverTimestamp()
+                email: form.adminEmail,
+                createdAt: serverTimestamp(),
+                isAdmin:  true
+            });
+            console.log("User document created with UID:", adminUid);
+
+
+            alert("Customer and Admin successfully created!");
+            setForm({
+                customerName: "",
+                address: "",
+                phone: "",
+                email: "",
+                adminName: "",
+                adminEmail: "",
+                adminPassword: "",
+                adminRole: "owner",
             });
 
-            alert("Customer + Admin record successfully created!");
-            // Redirect na stranicu sa listom korisnika
-            navigate("/admin/users"); // <--- redirect
+            navigate("/admin/users", { replace: true });
 
         } catch (err: any) {
             console.error(err);
-            alert("Error creating customer/admin: " + err.message);
-        }
+            if (err.code === "auth/email-already-in-use") {
+                alert("Admin email is already in use.");
+            } else {
+                // A catch-all for any other errors (auth, firestore, etc.)
+                alert("Error creating customer/admin: " + err.message);
+            }
 
-        setLoading(false);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -69,48 +100,43 @@ export default function AddCustomer() {
             <h2>Add New Customer</h2>
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <input
+                    name="customerName"
                     placeholder="Customer Name"
                     value={form.customerName}
-                    onChange={e => setForm({ ...form, customerName: e.target.value })}
+                    onChange={handleChange}
+                    required
+                />
+                <input name="address" placeholder="Address" value={form.address} onChange={handleChange} />
+                <input name="phone" placeholder="Phone" value={form.phone} onChange={handleChange} />
+                <input name="email" placeholder="Customer Email" type="email" value={form.email} onChange={handleChange} />
+
+                <h3>Admin Credentials</h3>
+                <input name="adminName" placeholder="Admin Name" value={form.adminName} onChange={handleChange} />
+                <input
+                    name="adminEmail"
+                    placeholder="Admin Email"
+                    type="email"
+                    value={form.adminEmail}
+                    onChange={handleChange}
                     required
                 />
                 <input
-                    placeholder="Address"
-                    value={form.address}
-                    onChange={e => setForm({ ...form, address: e.target.value })}
-                />
-                <input
-                    placeholder="Phone"
-                    value={form.phone}
-                    onChange={e => setForm({ ...form, phone: e.target.value })}
-                />
-                <input
-                    placeholder="Customer Email"
-                    value={form.email}
-                    onChange={e => setForm({ ...form, email: e.target.value })}
-                    type="email"
+                    name="adminPassword"
+                    placeholder="Admin Password"
+                    type="password"
+                    value={form.adminPassword}
+                    onChange={handleChange}
+                    required
                 />
 
-                <h3>Admin Info (placeholder)</h3>
-                <input
-                    placeholder="Admin Name"
-                    value={form.adminName}
-                    onChange={e => setForm({ ...form, adminName: e.target.value })}
-                />
-                <input
-                    placeholder="Admin Email"
-                    value={form.adminEmail}
-                    onChange={e => setForm({ ...form, adminEmail: e.target.value })}
-                    type="email"
-                    required
-                />
-                <input
-                    placeholder="Admin Password (placeholder)"
-                    value={form.adminPassword}
-                    onChange={e => setForm({ ...form, adminPassword: e.target.value })}
-                    type="password"
-                    required
-                />
+                <label>
+                    Role:
+                    <select name="adminRole" value={form.adminRole} onChange={handleChange}>
+                        <option value="owner">Owner</option>
+                        <option value="manager">Manager</option>
+                        <option value="waiter">Waiter</option>
+                    </select>
+                </label>
 
                 <button type="submit" disabled={loading}>
                     {loading ? "Creating..." : "Create Customer + Admin"}
