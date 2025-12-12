@@ -2,19 +2,16 @@ import React, { useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useNavigate } from "react-router-dom";
 import { auth, db } from "../../fb/firebase";
-import {
-  collection,
-  addDoc,
-  doc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { useAuth } from "../../contexts/AuthContext";
+import { ROLE } from "../../models/role";
 
 export default function AddCustomer() {
-  const { isSuperAdmin, user } = useAuth();
   const navigate = useNavigate();
+  const { isSuperAdmin, user } = useAuth();
+
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     customerName: "",
     address: "",
@@ -24,10 +21,6 @@ export default function AddCustomer() {
     adminEmail: "",
     adminPassword: "",
   });
-  const [loading, setLoading] = useState(false);
-
-  if (!user) return <p>Please log in to access this page.</p>;
-  if (!isSuperAdmin) return <p>You do not have permission to add customers.</p>;
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -55,7 +48,7 @@ export default function AddCustomer() {
         isAdmin: false,
         name: form.customerName,
         phone: form.phone,
-        role: "customer",
+        role: ROLE.CUSTOMER,
       });
       await createUserWithEmailAndPassword(
         auth,
@@ -75,6 +68,9 @@ export default function AddCustomer() {
       setLoading(false);
     }
   };
+
+  if (!user) return <p>Please log in to access this page.</p>;
+  if (!isSuperAdmin) return <p>You do not have permission to add customers.</p>;
 
   return (
     <div style={{ padding: 20, maxWidth: 500 }}>
