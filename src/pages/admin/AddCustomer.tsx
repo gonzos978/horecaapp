@@ -44,6 +44,7 @@ export default function AddCustomer() {
         address: form.address,
         createdAt: serverTimestamp(),
         customerId: uuidv4(),
+        customerName: form.customerName,
         email: form.email,
         isAdmin: false,
         name: form.customerName,

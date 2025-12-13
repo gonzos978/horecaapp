@@ -54,6 +54,8 @@ export default function AdminLogin() {
         navigate("/admin/dashboard", { replace: true });
       } else if (data.role === "customer") {
         navigate("/app/home", { replace: true });
+      } else if (data.role === "manager") {
+        navigate("/app/home", { replace: true });
       } else {
         setErrorMsg("User role is not recognized.");
       }

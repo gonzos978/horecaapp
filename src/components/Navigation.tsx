@@ -10,16 +10,16 @@ export default function Navigation({ currentPage, onNavigate }: NavigationProps)
   const { t } = useLanguage();
 
   const menuItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
-    { id: 'workers', icon: Users, label: t('nav.workers') },
-    { id: 'artikli', icon: Package, label: t('nav.artikli') },
-    { id: 'menu', icon: UtensilsCrossed, label: t('nav.menu') },
-    { id: 'alerts', icon: Bell, label: t('nav.alerts') },
-    { id: 'voice', icon: Mic, label: t('nav.voice') },
-    { id: 'checklists', icon: ClipboardCheck, label: t('nav.checklists') },
-    { id: 'training', icon: GraduationCap, label: t('nav.training') },
-    { id: 'anonymousReports', icon: Shield, label: t('nav.anonymousReports') },
-    { id: 'settings', icon: Settings, label: t('nav.settings') },
+    { id: "dashboard", icon: LayoutDashboard, label: t("nav.dashboard") },
+    { id: "users", icon: Users, label: t("nav.users") },
+    { id: "artikli", icon: Package, label: t("nav.artikli") },
+    { id: "menu", icon: UtensilsCrossed, label: t("nav.menu") },
+    { id: "alerts", icon: Bell, label: t("nav.alerts") },
+    { id: "voice", icon: Mic, label: t("nav.voice") },
+    { id: "checklists", icon: ClipboardCheck, label: t("nav.checklists") },
+    { id: "training", icon: GraduationCap, label: t("nav.training") },
+    { id: "anonymousReports", icon: Shield, label: t("nav.anonymousReports") },
+    { id: "settings", icon: Settings, label: t("nav.settings") },
   ];
 
   const pwaItems = [
