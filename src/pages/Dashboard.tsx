@@ -31,6 +31,9 @@ export default function Dashboard() {
   const { currentUser } = useAuth();
 
   const [openModal, setOpenModal] = useState(false);
+  const [members, setMembers] = useState<AppUser[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [alerts, setAlerts] = useState<any[]>([]);
   const [kpis, setKpis] = useState({
     revenue: 3450,
     theft: 87,
@@ -39,9 +42,9 @@ export default function Dashboard() {
     performance: 91,
     orders: 156,
   });
-  const [members, setMembers] = useState<AppUser[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [alerts, setAlerts] = useState<any[]>([]);
+
+  const isCustomerOrManager =
+    currentUser?.role === ROLE.CUSTOMER || currentUser?.role === ROLE.MANAGER;
 
   const kpiCards = [
     {
@@ -95,7 +98,9 @@ export default function Dashboard() {
     if (currentUser.role === "manager") rolesToFetch = ["worker"];
     else if (currentUser.role === "customer")
       rolesToFetch = ["manager", "worker"];
-    else return; // npr. worker nema pravo vidjeti nikoga
+    else {
+      rolesToFetch = ["worker"];
+    }
 
     if (rolesToFetch.length === 0) {
       setMembers([]);
@@ -128,7 +133,6 @@ export default function Dashboard() {
 
   const handleOnUsersAdded = () => {
     handleCloseModal();
-    fetchCompanyMembers();
   };
 
   useEffect(() => {
@@ -241,9 +245,13 @@ export default function Dashboard() {
   // -------------------------------------------
   // Render
   // -------------------------------------------
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <Header title={t("nav.dashboard")} subtitle="Restoran Beograd Centar" />
+      <Header
+        title={t("nav.dashboard")}
+        subtitle={`${currentUser?.customerName} - ${currentUser?.name} - ${currentUser?.role}`}
+      />
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -277,14 +285,15 @@ export default function Dashboard() {
       </div>
 
       {/* Dodaj korisnika button */}
-      <button
-        onClick={() => setOpenModal(true)}
-        type="button"
-        className="text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded-full text-sm px-4 py-2.5 focus:outline-none"
-      >
-        Dodaj korisnika
-      </button>
-
+      {isCustomerOrManager && (
+        <button
+          onClick={() => setOpenModal(true)}
+          type="button"
+          className="text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded-full text-sm px-4 py-2.5 focus:outline-none"
+        >
+          Dodaj korisnika
+        </button>
+      )}
       {/* Members i Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Members / Leaderboard */}
@@ -313,14 +322,37 @@ export default function Dashboard() {
                     {index + 1}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-slate-900">{member.name}</p>
-                    <p className="text-sm text-slate-600">{member.role}</p>
+                    <p
+                      className={`font-medium ${
+                        currentUser?.email === member.email
+                          ? "text-blue-500"
+                          : "text-slate-900"
+                      }`}
+                    >
+                      {member.name} {member.email}
+                    </p>
+                    <p
+                      className={`text-sm ${
+                        currentUser?.email === member.email
+                          ? "text-blue-500"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {member.role}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-slate-900">56</p>
                     <div className="flex items-center gap-1">
+                      <span
+                        className={`font-bold ${
+                          currentUser?.email === member.email
+                            ? "text-blue-500"
+                            : "text-slate-600"
+                        }`}
+                      >
+                        7.7
+                      </span>
                       <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                      <span className="text-xs text-slate-600">46%</span>
                     </div>
                   </div>
                 </div>

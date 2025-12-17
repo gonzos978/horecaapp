@@ -10,6 +10,7 @@ import {
 import { auth, db } from "../fb/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import "../styles/AdminLogin.css";
+import { ROLE } from "../models/role";
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("");
@@ -32,7 +33,6 @@ export default function AdminLogin() {
         password
       );
       const user = userCredential.user;
-
       // 2. Dohvati Firestore user dokument po emailu
       const q = query(
         collection(db, "users"),
@@ -50,11 +50,9 @@ export default function AdminLogin() {
       const data = docSnap.data();
 
       // 4. Navigacija na osnovu role
-      if (data.role === "admin") {
+      if (data.role === ROLE.ADMIN) {
         navigate("/admin/dashboard", { replace: true });
-      } else if (data.role === "customer") {
-        navigate("/app/home", { replace: true });
-      } else if (data.role === "manager") {
+      } else if ((Object.values(ROLE) as string[]).includes(data.role)) {
         navigate("/app/home", { replace: true });
       } else {
         setErrorMsg("User role is not recognized.");
@@ -101,11 +99,13 @@ export default function AdminLogin() {
       }
 
       const data = docSnap.data();
-      if (data.role === "admin")
+      if (data.role === ROLE.ADMIN) {
         navigate("/admin/dashboard", { replace: true });
-      else if (data.role === "customer")
+      } else if ((Object.values(ROLE) as string[]).includes(data.role)) {
         navigate("/app/home", { replace: true });
-      else setErrorMsg("User role is not recognized.");
+      } else {
+        setErrorMsg("User role is not recognized.");
+      }
     } catch (error: any) {
       console.error(error);
       setErrorMsg(error.message || "Google login failed");

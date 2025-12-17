@@ -1,7 +1,7 @@
 import React from "react";
 import { useForm } from "react-hook-form";
 import { auth, db } from "../fb/firebase";
-import { addDoc, collection } from "firebase/firestore";
+import { setDoc, doc } from "firebase/firestore";
 import { ROLE } from "../models/role";
 import { useAuth } from "../contexts/AuthContext";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -25,7 +25,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
   onClose,
   onUserAdded,
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, user } = useAuth();
   const { register, handleSubmit, reset } = useForm<FormValues>();
 
   const onSubmit = async (data: FormValues) => {
@@ -39,7 +39,9 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
       role: currentUser.role === ROLE.CUSTOMER ? ROLE.MANAGER : ROLE.WORKER,
     };
     try {
-      await addDoc(collection(db, "users"), newUser);
+      await setDoc(doc(db, "users", newUser.email), {
+        ...newUser,
+      });
       await createUserWithEmailAndPassword(auth, data.email, data.password);
       reset();
       onClose();
@@ -63,14 +65,14 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
             className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
           />
           <input
-            {...register("password", { required: true })}
-            placeholder="Šifra"
-            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
-          />
-          <input
             {...register("email", { required: true })}
             placeholder="Email"
             type="email"
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
+          />
+          <input
+            {...register("password", { required: true })}
+            placeholder="Šifra"
             className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
           />
           <input

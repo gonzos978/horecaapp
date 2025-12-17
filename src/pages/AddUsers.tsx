@@ -51,7 +51,6 @@ export default function AddUser() {
             timestamp_updated: new Date().toISOString(),
         };
 
-        console.log("New User:", newUser);
 
         try {
             // Spremi usera u Firestore collection "users" pod njegovim id-om

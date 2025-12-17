@@ -17,6 +17,7 @@ import AdminSettings from "./pages/admin/Settings";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import Navigation from "./components/Navigation";
 import Dashboard from "./pages/Dashboard";
+import Tasks from "./pages/Tasks";
 import Workers from "./pages/Workers";
 import Inventory from "./pages/Inventory";
 import Menu from "./pages/Menu";
@@ -34,6 +35,7 @@ import ManagerApp from "./pages/pwa/ManagerApp";
 // -------------------- PAGE TYPE --------------------
 type Page =
   | "dashboard"
+  | "tasks"
   | "workers"
   | "artikli"
   | "menu"
@@ -72,6 +74,8 @@ function CustomerMainApp() {
     switch (currentPage) {
       case "dashboard":
         return <Dashboard />;
+      case "tasks":
+        return <Tasks />;
       case "workers":
         return <Workers />;
       case "artikli":
@@ -150,6 +154,7 @@ export default function App() {
           >
             <Route index element={<Navigate to="home" replace />} />
             <Route path="home" element={<Dashboard />} />
+            <Route path="tasks" element={<Tasks />} />
             <Route path="workers" element={<Workers />} />
             <Route path="artikli" element={<Inventory />} />
             <Route path="menu" element={<Menu />} />

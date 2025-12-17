@@ -1,25 +1,23 @@
 import React, { useState } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { useNavigate } from "react-router-dom";
-import { auth, db } from "../../fb/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
+import { db, auth } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import { ROLE } from "../../models/role";
 
 export default function AddCustomer() {
-  const navigate = useNavigate();
   const { isSuperAdmin, user } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    customerName: "",
     address: "",
-    phone: "",
+    customerId: "",
+    customerName: "",
     email: "",
-    adminName: "",
-    adminEmail: "",
-    adminPassword: "",
+    isAdmin: false,
+    name: "",
+    password: "",
+    phone: "",
   });
 
   const handleChange = (
@@ -33,34 +31,29 @@ export default function AddCustomer() {
     e.preventDefault();
     setLoading(true);
 
-    if (!form.customerName || !form.adminEmail || !form.adminPassword) {
+    if (!form.customerName || !form.email || !form.password) {
       alert("Customer Name, Admin Email and Password are required.");
       setLoading(false);
       return;
     }
 
     try {
-      await addDoc(collection(db, "users"), {
+      await setDoc(doc(db, "users", form.email), {
         address: form.address,
         createdAt: serverTimestamp(),
-        customerId: uuidv4(),
+        customerId: form.email,
         customerName: form.customerName,
         email: form.email,
         isAdmin: false,
-        name: form.customerName,
+        name: form.name,
         phone: form.phone,
         role: ROLE.CUSTOMER,
       });
-      await createUserWithEmailAndPassword(
-        auth,
-        form.adminEmail,
-        form.adminPassword
-      );
-      navigate("/admin/users", { replace: true });
+      await createUserWithEmailAndPassword(auth, form.email, form.password);
     } catch (err: any) {
       console.error(err);
       if (err.code === "auth/email-already-in-use") {
-        alert("Admin email is already in use.");
+        alert("Customer email is already in use.");
       } else {
         // A catch-all for any other errors (auth, firestore, etc.)
         alert("Error creating customer/admin: " + err.message);
@@ -99,34 +92,26 @@ export default function AddCustomer() {
           value={form.phone}
           onChange={handleChange}
         />
-        <input
-          name="email"
-          placeholder="Customer Email"
-          type="email"
-          value={form.email}
-          onChange={handleChange}
-        />
-
         <h3>Admin Credentials</h3>
         <input
-          name="adminName"
+          name="name"
           placeholder="Admin Name"
-          value={form.adminName}
+          value={form.name}
           onChange={handleChange}
         />
         <input
-          name="adminEmail"
+          name="email"
           placeholder="Admin Email"
           type="email"
-          value={form.adminEmail}
+          value={form.email}
           onChange={handleChange}
           required
         />
         <input
-          name="adminPassword"
+          name="password"
           placeholder="Admin Password"
           type="password"
-          value={form.adminPassword}
+          value={form.password}
           onChange={handleChange}
           required
         />

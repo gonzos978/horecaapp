@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setCurrentUser(data);
             setIsAdmin(data.role === "admin");
 
-            const SUPER_ADMIN_UID = "goq3MIVP0IaPZ7VCRZjDF9MxgsN2";
+            const SUPER_ADMIN_UID = "qwfKx9DlZYSkIGGBJBIqTmOQPY02";
             setIsSuperAdmin(firebaseUser.uid === SUPER_ADMIN_UID);
           } else {
             // Ako nema dokumenta s tim emailom
