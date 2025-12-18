@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import {
   TrendingUp,
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Header from "../components/Header";
 import AddUserModal from "../components/AddUserModal";
+import AddNotificationModal from "../components/AddNotificationModal";
 import { db } from "../fb/firebase";
 import { ROLE } from "../models/role";
 import { useAuth } from "../contexts/AuthContext";
@@ -27,14 +28,37 @@ interface AppUser {
   readonly type: string;
 }
 
+interface INotification {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly priority: string;
+  readonly amount: number | null;
+  readonly visibleFor: string[];
+  readonly createdAt: any;
+  readonly creatorId: string;
+  readonly creatorName: string;
+  readonly customerId: string;
+  readonly type: string;
+}
+
+const severityColors = {
+  LOW: "bg-blue-100 text-blue-800 border-blue-200",
+  MEDIUM: "bg-amber-100 text-amber-800 border-amber-200",
+  HIGH: "bg-orange-100 text-orange-800 border-orange-200",
+  CRITICAL: "bg-red-100 text-red-800 border-red-200",
+};
+
 export default function Dashboard() {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const { currentUser } = useAuth();
 
-  const [openModal, setOpenModal] = useState(false);
+  const [modalType, setModalType] = useState<"user" | "notification" | null>(
+    null
+  );
   const [members, setMembers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<INotification[]>([]);
   const [kpis, setKpis] = useState({
     revenue: 3450,
     theft: 87,
@@ -128,12 +152,38 @@ export default function Dashboard() {
     }
   };
 
+  const fetchNotifications = async () => {
+    if (!currentUser?.customerId) return [];
+
+    const q = query(
+      collection(db, "notifications"),
+      where("customerId", "==", currentUser.customerId),
+      where("visibleFor", "array-contains", currentUser.type),
+      orderBy("createdAt", "desc")
+    );
+
+    const snapshot = await getDocs(q);
+
+    const notifications: INotification[] = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<INotification, "id">),
+    }));
+
+    setAlerts(notifications);
+  };
+
   const handleCloseModal = () => {
-    setOpenModal(false);
+    setModalType(null);
   };
 
   const handleOnUsersAdded = () => {
     handleCloseModal();
+    fetchCompanyMembers();
+  };
+
+  const handleOnNotificationAdded = () => {
+    handleCloseModal();
+    fetchNotifications();
   };
 
   useEffect(() => {
@@ -151,95 +201,12 @@ export default function Dashboard() {
       ),
       orders: prev.orders + Math.floor(Math.random() * 3),
     }));
-    setAlerts([
-      {
-        id: "7f64c165-8acc-4030-82ee-572dea1b4d81",
-        location_id: "4c5089f6-4fca-4d81-a733-68e712299bd8",
-        worker_id: "18fc2272-fbda-4517-ae74-af9863d06759",
-        type: "THEFT",
-        severity: "CRITICAL",
-        title_sr: "Krađa vina detektovana",
-        title_hr: "Krađa vina detektirana",
-        title_bs: "Krađa vina detektovana",
-        title_en: "Wine Theft Detected",
-        title_de: "Weindiebstahl erkannt",
-        message_sr: "Krađa vina detektovana - €50 (Marko W034)",
-        message_hr: "Krađa vina detektirana - €50 (Marko W034)",
-        message_bs: "Krađa vina detektovana - €50 (Marko W034)",
-        message_en: "Wine theft detected - €50 (Marko W034)",
-        message_de: "Weindiebstahl erkannt - €50 (Marko W034)",
-        amount: 50,
-        metadata: {
-          alert_id: "AL-001",
-          evidence: "voice_gap_detection",
-        },
-        read: false,
-        resolved: false,
-        created_at: "2025-12-04T12:42:40.803129+00:00",
-      },
-      {
-        id: "878a1655-8a50-4a72-988e-3f331feddd56",
-        location_id: "4c5089f6-4fca-4d81-a733-68e712299bd8",
-        worker_id: null,
-        type: "THEFT",
-        severity: "HIGH",
-        title_sr: "Anonimna prijava: Krađa",
-        title_hr: "Anonimna prijava: Krađa",
-        title_bs: "Anonimna prijava: Krađa",
-        title_en: "Anonymous Report: Theft",
-        title_de: "Anonyme Meldung: Diebstahl",
-        message_sr:
-          "Anonimna prijava: Krađa od pouzdanog radnika (credibility 92%)",
-        message_hr:
-          "Anonimna prijava: Krađa od pouzdanog radnika (credibility 92%)",
-        message_bs:
-          "Anonimna prijava: Krađa od pouzdanog radnika (credibility 92%)",
-        message_en:
-          "Anonymous report: Theft from reliable worker (credibility 92%)",
-        message_de:
-          "Anonyme Meldung: Diebstahl von zuverlässigem Mitarbeiter (Glaubwürdigkeit 92%)",
-        amount: null,
-        metadata: {
-          alert_id: "AL-002",
-          report_id: "R-001",
-          credibility: 92,
-        },
-        read: false,
-        resolved: false,
-        created_at: "2025-12-04T12:42:40.803129+00:00",
-      },
-      {
-        id: "2ed3ca3d-bbd4-4adc-aa10-9ac1841e437d",
-        location_id: "4c5089f6-4fca-4d81-a733-68e712299bd8",
-        worker_id: null,
-        type: "PERFORMANCE",
-        severity: "CRITICAL",
-        title_sr: "Rizik odlaska: 3 kuvara",
-        title_hr: "Rizik odlaska: 3 kuhara",
-        title_bs: "Rizik odlaska: 3 kuvara",
-        title_en: "Turnover Risk: 3 Cooks",
-        title_de: "Fluktuationsrisiko: 3 Köche",
-        message_sr: "Turnover risk: 3 kuvara mogu otići (78%)",
-        message_hr: "Turnover risk: 3 kuhara mogu otići (78%)",
-        message_bs: "Turnover risk: 3 kuvara mogu otići (78%)",
-        message_en: "Turnover risk: 3 cooks may leave (78%)",
-        message_de: "Fluktuationsrisiko: 3 Köche könnten gehen (78%)",
-        amount: null,
-        metadata: {
-          workers: ["K001", "K002", "K003"],
-          alert_id: "AL-003",
-          probability: 78,
-        },
-        read: false,
-        resolved: false,
-        created_at: "2025-12-04T12:42:40.803129+00:00",
-      },
-    ]);
   }, []);
 
   useEffect(() => {
     if (currentUser) {
       fetchCompanyMembers();
+      fetchNotifications();
     }
   }, [currentUser]);
 
@@ -251,7 +218,7 @@ export default function Dashboard() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <Header
         title={t("nav.dashboard")}
-        subtitle={`${currentUser?.customerName} - ${currentUser?.name} - ${currentUser?.role} `}
+        subtitle={`${currentUser?.customerName} - ${currentUser?.name} - ${currentUser?.role}`}
       />
 
       {/* KPI cards */}
@@ -285,16 +252,26 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Dodaj korisnika button */}
+      {/* Dodaj korisnika i obavijest */}
       {isCustomerOrManager && (
-        <button
-          onClick={() => setOpenModal(true)}
-          type="button"
-          className="text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded-full text-sm px-4 py-2.5 focus:outline-none"
-        >
-          Dodaj korisnika
-        </button>
+        <div className="flex flex-row justify-between">
+          <button
+            onClick={() => setModalType("user")}
+            type="button"
+            className="text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded-full text-sm px-4 py-2.5 focus:outline-none"
+          >
+            Dodaj korisnika
+          </button>
+          <button
+            onClick={() => setModalType("notification")}
+            type="button"
+            className="text-white bg-brand box-border border border-transparent hover:bg-brand-strong focus:ring-4 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded-full text-sm px-4 py-2.5 focus:outline-none"
+          >
+            Dodaj obavijest
+          </button>
+        </div>
       )}
+
       {/* Members i Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Members / Leaderboard */}
@@ -368,46 +345,40 @@ export default function Dashboard() {
             {t("alerts.title")}
           </h2>
           <div className="space-y-3">
-            {alerts.map((alert) => {
-              const severityColors = {
-                LOW: "bg-blue-100 text-blue-800 border-blue-200",
-                MEDIUM: "bg-amber-100 text-amber-800 border-amber-200",
-                HIGH: "bg-orange-100 text-orange-800 border-orange-200",
-                CRITICAL: "bg-red-100 text-red-800 border-red-200",
-              };
-
-              const titleKey = `title_${language}` as keyof typeof alert;
-              const messageKey = `message_${language}` as keyof typeof alert;
-
-              return (
-                <div
-                  key={alert.id}
-                  className={`p-3 border rounded-lg ${
-                    severityColors[
-                      alert.severity as keyof typeof severityColors
-                    ]
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-medium">{alert[titleKey]}</p>
-                      <p className="text-sm mt-1">{alert[messageKey]}</p>
-                    </div>
-                    <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+            {alerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`p-3 border rounded-lg ${
+                  severityColors[
+                    alert.priority.toUpperCase() as keyof typeof severityColors
+                  ]
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium">{alert.title}</p>
+                    <p className="text-sm mt-1">{alert.description}</p>
                   </div>
-                  {alert.amount && (
-                    <p className="text-lg font-bold mt-2">€{alert.amount}</p>
-                  )}
+                  <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                 </div>
-              );
-            })}
+                {alert.amount && (
+                  <p className="text-lg font-bold mt-2">€{alert.amount}</p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
+
       <AddUserModal
-        isOpen={openModal}
+        isOpen={modalType === "user"}
         onClose={handleCloseModal}
         onUserAdded={handleOnUsersAdded}
+      />
+      <AddNotificationModal
+        isOpen={modalType === "notification"}
+        onClose={handleCloseModal}
+        onNotificationAdded={handleOnNotificationAdded}
       />
     </div>
   );
