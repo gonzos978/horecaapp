@@ -5,6 +5,8 @@ export interface ITask {
   readonly hasInput?: boolean;
   readonly photoRequired?: boolean;
   readonly temp?: string;
+  readonly photo?: string;
+  readonly photoFile?: File | null;
 }
 
 export type TTaskType =
