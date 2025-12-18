@@ -2,27 +2,28 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { query, collection, getDocs, where } from "firebase/firestore";
 import { auth, db } from "../fb/firebase";
+import { TTaskType } from "../models/tasks";
 
-interface FirestoreUser {
-  uid: string;
-  email: string;
-  role: string;
-  customerId?: string;
-  customerName?: string;
-  name?: string;
-  phone?: string;
-  address?: string;
-  createdAt?: any;
-  isAdmin?: boolean;
+export interface FirestoreUser {
+  readonly email: string;
+  readonly role: string;
+  readonly customerId?: string;
+  readonly customerName?: string;
+  readonly name?: string;
+  readonly phone?: string;
+  readonly address?: string;
+  readonly createdAt?: any;
+  readonly isAdmin?: boolean;
+  readonly type: TTaskType;
 }
 
 interface AuthContextType {
-  user: any; // Firebase Auth user
-  currentUser: FirestoreUser | null; // Firestore document
-  loading: boolean;
-  isAdmin: boolean;
-  isSuperAdmin: boolean;
-  logout: () => Promise<void>;
+  readonly user: any; // Firebase Auth user
+  readonly currentUser: FirestoreUser | null; // Firestore document
+  readonly loading: boolean;
+  readonly isAdmin: boolean;
+  readonly isSuperAdmin: boolean;
+  readonly logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({

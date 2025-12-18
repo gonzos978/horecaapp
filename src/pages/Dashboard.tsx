@@ -24,6 +24,7 @@ interface AppUser {
   readonly id: string;
   readonly name: string;
   readonly role: ROLE;
+  readonly type: string;
 }
 
 export default function Dashboard() {
@@ -250,7 +251,7 @@ export default function Dashboard() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <Header
         title={t("nav.dashboard")}
-        subtitle={`${currentUser?.customerName} - ${currentUser?.name} - ${currentUser?.role}`}
+        subtitle={`${currentUser?.customerName} - ${currentUser?.name} - ${currentUser?.role} `}
       />
 
       {/* KPI cards */}
@@ -338,7 +339,7 @@ export default function Dashboard() {
                           : "text-slate-600"
                       }`}
                     >
-                      {member.role}
+                      {member.role} {member.type}
                     </p>
                   </div>
                   <div className="text-right">

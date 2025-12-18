@@ -1,7 +1,7 @@
 import React from "react";
 import { useForm } from "react-hook-form";
 import { auth, db } from "../fb/firebase";
-import { setDoc, doc } from "firebase/firestore";
+import { setDoc, doc, serverTimestamp } from "firebase/firestore";
 import { ROLE } from "../models/role";
 import { useAuth } from "../contexts/AuthContext";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -18,6 +18,7 @@ interface FormValues {
   readonly phone: string;
   readonly address: string;
   readonly password: string;
+  readonly type: string;
 }
 
 const AddUserModal: React.FC<AddUserModalProps> = ({
@@ -25,18 +26,23 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
   onClose,
   onUserAdded,
 }) => {
-  const { currentUser, user } = useAuth();
-  const { register, handleSubmit, reset } = useForm<FormValues>();
+  const { currentUser } = useAuth();
+  const { register, handleSubmit, reset } = useForm<FormValues>({
+    defaultValues: {
+      type: "waiter",
+    },
+  });
 
   const onSubmit = async (data: FormValues) => {
     if (!currentUser) return;
     const newUser = {
       ...data,
-      createdAt: new Date(),
+      createdAt: serverTimestamp(),
       customerId: currentUser.customerId,
       customerName: currentUser.customerName,
       isAdmin: false,
       role: currentUser.role === ROLE.CUSTOMER ? ROLE.MANAGER : ROLE.WORKER,
+      type: currentUser.role === ROLE.CUSTOMER ? ROLE.MANAGER : data.type,
     };
     try {
       await setDoc(doc(db, "users", newUser.email), {
@@ -85,7 +91,16 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
             placeholder="Adresa"
             className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
           />
-
+          {currentUser?.role !== ROLE.CUSTOMER && (
+            <select
+              id="type"
+              {...register("type", { required: "Obavezno polje" })}
+            >
+              <option value="waiter">Konobar</option>
+              <option value="cook">Kuhar</option>
+              <option value="housekeeping">Sobarica</option>
+            </select>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"

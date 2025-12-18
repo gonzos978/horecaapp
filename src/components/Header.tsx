@@ -53,6 +53,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
       customerId: currentUser.customerId,
       email: currentUser.email,
       role: currentUser.role,
+      tasksDone: [],
       checkIn: serverTimestamp(),
     });
 

@@ -18,6 +18,8 @@ export default function AddCustomer() {
     name: "",
     password: "",
     phone: "",
+    role: ROLE.CUSTOMER,
+    type: ROLE.CUSTOMER,
   });
 
   const handleChange = (
@@ -48,6 +50,7 @@ export default function AddCustomer() {
         name: form.name,
         phone: form.phone,
         role: ROLE.CUSTOMER,
+        type: ROLE.CUSTOMER,
       });
       await createUserWithEmailAndPassword(auth, form.email, form.password);
     } catch (err: any) {

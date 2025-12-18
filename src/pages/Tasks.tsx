@@ -1,45 +1,13 @@
 import { useState, useEffect } from "react";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../fb/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { format } from "date-fns";
-
-interface Task {
-  id: string;
-  title: string;
-  done: boolean;
-  timestamp?: Date;
-}
-
-const TASK_LIST: Task[] = [
-  { id: "uniform", title: "Obukao radnu uniformu", done: false },
-  {
-    id: "clean_hall",
-    title: "Provjerio čistoću sale/ljetne bašte",
-    done: false,
-  },
-  {
-    id: "check_tables",
-    title: "Provjerio stolove, karanfinge, promo materijale",
-    done: false,
-  },
-  { id: "bar_review", title: "Pregledao stanje šanka i popisa", done: false },
-  {
-    id: "kitchen_review",
-    title: "Upoznao se sa stanjem jela u kuhinji",
-    done: false,
-  },
-];
+import { ITask, TASK_LIST_BY_TYPE } from "../models/tasks";
 
 export default function Tasks() {
   const { currentUser } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<ITask[]>([]);
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const shiftDocId = currentUser?.email
     ? `${currentUser.email}_${todayKey}`
@@ -56,19 +24,23 @@ export default function Tasks() {
         const data = docSnap.data();
         const doneTasks = data.tasksDone || [];
         // Mapiramo TASK_LIST da označimo done
-        const updatedTasks = TASK_LIST.map((task) => {
-          const found = doneTasks.find((t: any) => t.taskId === task.id);
-          return {
-            ...task,
-            done: !!found,
-            timestamp: found?.timestamp?.toDate
-              ? found.timestamp.toDate()
-              : found?.timestamp,
-          };
-        });
-        setTasks(updatedTasks);
+        if (currentUser.type) {
+          const updatedTasks = TASK_LIST_BY_TYPE[currentUser.type].map(
+            (task: ITask) => {
+              const found = doneTasks.find((t: any) => t.taskId === task.id);
+              return {
+                ...task,
+                done: !!found,
+                timestamp: found?.timestamp?.toDate
+                  ? found.timestamp.toDate()
+                  : found?.timestamp,
+              };
+            }
+          );
+          setTasks(updatedTasks);
+        }
       } else {
-        setTasks(TASK_LIST);
+        setTasks(TASK_LIST_BY_TYPE[currentUser.type]);
       }
     };
 
@@ -80,10 +52,15 @@ export default function Tasks() {
 
     const docRef = doc(db, "workingDays", shiftDocId);
     const docSnap = await getDoc(docRef);
-
-    let tasksDone: any[] = docSnap.exists()
-      ? docSnap.data().tasksDone || []
-      : [];
+    if (!docSnap.exists()) {
+      alert("Niste prijavljeni u smijenu");
+      return;
+    }
+    if (docSnap.data().checkOut) {
+      alert("Vaša smjena je gotova, zadatke ne možete obavljati do sutra");
+      return;
+    }
+    let tasksDone: any[] = docSnap.data().tasksDone;
 
     const isDone = tasksDone.find((t) => t.taskId === taskId);
 
@@ -98,19 +75,7 @@ export default function Tasks() {
       });
     }
 
-    if (!docSnap.exists()) {
-      await setDoc(docRef, {
-        name: currentUser.name,
-        customerName: currentUser.customerName,
-        customerId: currentUser.customerId,
-        email: currentUser.email,
-        role: currentUser.role,
-        checkIn: serverTimestamp(),
-        tasksDone,
-      });
-    } else {
-      await updateDoc(docRef, { tasksDone });
-    }
+    await updateDoc(docRef, { tasksDone });
 
     // Update lokalnog state-a
     setTasks((prev) =>
