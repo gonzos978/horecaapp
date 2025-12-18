@@ -35,31 +35,45 @@ export default function Tasks() {
     const isDone = tasksDone.find((t) => t.taskId === task.id);
 
     if (isDone) {
+      // Zadatak nije urađen pa se briše - recimo da je user greškom chekirao
       tasksDone = tasksDone.filter((t) => t.taskId !== task.id);
     } else {
+      // Provjere
+      // kada je input polje obavezno
       if (task.hasInput && !task.temp) {
         alert(
           "Morate unijeti traženu vrijednost prije nego označite zadatak kao urađen."
         );
         return;
       }
-
-      if (task.photoRequired && !task.photo) {
+      // kada je sika obavezna
+      if (task.photoRequired && !task.photoFile) {
         alert(
-          "Morate dodati fotografiju prije nego označite zadatak kao urađen."
+          "Morate odabrati fotografiju prije nego označite zadatak kao urađen."
         );
         return;
       }
+
+      // Upload fotografije ako postoji
+      let photoUrl: string | null = null;
+      if (task.photoRequired && task.photoFile) {
+        const storageRef = ref(storage, `tasksPhotos/${task.id}_${Date.now()}`);
+        await uploadBytes(storageRef, task.photoFile);
+        photoUrl = await getDownloadURL(storageRef);
+      }
+      // update podataka
       tasksDone.push({
         taskId: task.id,
         timestamp: new Date(),
         temp: task.temp,
-        photo: task.photo,
+        photo: photoUrl,
       });
     }
 
+    // pozivamo bazu
     await updateDoc(docRef, { tasksDone });
 
+    // updatujemo lokalni state
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, done: !isDone } : t))
     );
@@ -71,17 +85,11 @@ export default function Tasks() {
     );
   };
 
-  const handlePhotoChange = async (taskId: string, file: File | null) => {
-    if (!file) return;
-
-    // Upload u Firebase Storage
-    const storageRef = ref(storage, `tasksPhotos/${taskId}_${Date.now()}`);
-    await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(storageRef);
-
-    // Update state sa URL-om
+  const handlePhotoChange = (taskId: string, file: File | null) => {
     setTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, photo: url } : task))
+      prev.map((task) =>
+        task.id === taskId ? { ...task, photoFile: file } : task
+      )
     );
   };
 
@@ -107,6 +115,7 @@ export default function Tasks() {
                   : found?.timestamp,
                 temp: found?.temp || "",
                 photo: found?.photo || null,
+                photoFile: null, // fajl još nije odabran
               };
             }
           );
@@ -125,7 +134,7 @@ export default function Tasks() {
       <h2 className="text-2xl font-bold mb-4">Dnevni zadaci</h2>
       <ul className="space-y-4">
         {tasks.map((task) => (
-          <li className="flex row gap-6 items-center" key={task.id}>
+          <li className="flex flex-row gap-8" key={task.id}>
             <button
               onClick={() => handleTaskClick(task)}
               className={`w-full text-left px-4 py-2 rounded-md font-semibold ${
@@ -143,7 +152,7 @@ export default function Tasks() {
                 placeholder="Unesite vrijednost"
                 value={task.temp || ""}
                 onChange={(e) => handleInputChange(task.id, e.target.value)}
-                className="mb-2 w-full px-2 py-1 border rounded"
+                className="w-full px-2 py-1 border rounded"
               />
             )}
 
@@ -154,7 +163,7 @@ export default function Tasks() {
                 onChange={(e) =>
                   handlePhotoChange(task.id, e.target.files?.[0] || null)
                 }
-                className="mb-2 w-full"
+                className="w-full"
               />
             )}
           </li>
