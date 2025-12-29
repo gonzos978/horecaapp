@@ -1,43 +1,61 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../fb/firebase";
+import "../../styles/customers.css";
 
 export default function CustomersList() {
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const fetchCustomers = async () => {
-    setLoading(true);
+    const [customers, setCustomers] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const q = query(collection(db, "users"), where("role", "==", "customer"));
+    const fetchCustomers = async () => {
+        setLoading(true);
 
-    const querySnapshot = await getDocs(q);
+        const q = query(
+            collection(db, "users"),
+            where("role", "==", "customer")
+        );
 
-    const data = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+        const querySnapshot = await getDocs(q);
 
-    setCustomers(data);
-    setLoading(false);
-  };
+        const data = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+        }));
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+        setCustomers(data);
+        setLoading(false);
+    };
 
-  if (loading) return <p>Loading customers...</p>;
+    useEffect(() => {
+        fetchCustomers();
+    }, []);
 
-  return (
-    <div style={{ padding: 20 }}>
-      <h2>Users</h2>
-      <ul>
-        {customers.map((c) => (
-          <li key={c.id}>
-            <strong>{c.name}</strong> ({c.email}) – {c.address || "N/A"} –{" "}
-            {c.phone || "N/A"} {c.role}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+    if (loading) return <p className="loading">Loading customers...</p>;
+
+    return (
+        <div className="customers-page">
+            <h2>Customers</h2>
+
+            {customers.length === 0 && (
+                <p className="empty">No customers found.</p>
+            )}
+
+            <ul className="customers-list">
+                {customers.map(c => (
+                    <li key={c.id} className="customer-card">
+                        <div className="customer-main">
+                            <strong className="customer-name">{c.name}</strong>
+                            <span className="customer-email">{c.email}</span>
+                        </div>
+
+                        <div className="customer-meta">
+                            <span>📍 {c.address || "N/A"}</span>
+                            <span>📞 {c.phone || "N/A"}</span>
+                            <span className="role">👤 {c.role}</span>
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
 }

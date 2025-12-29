@@ -1,0 +1,72 @@
+.customers-page {
+    padding: 24px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.customers-page h2 {
+    margin-bottom: 16px;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+/* Loading / empty */
+.loading,
+.empty {
+    color: #64748b;
+    font-size: 14px;
+}
+
+/* List */
+.customers-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+/* Card */
+.customer-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.customer-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Content */
+.customer-main {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+}
+
+.customer-name {
+    font-size: 16px;
+    color: #0f172a;
+}
+
+.customer-email {
+    font-size: 13px;
+    color: #64748b;
+}
+
+.customer-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #334155;
+}
+
+.customer-meta .role {
+    margin-top: 6px;
+    font-weight: 500;
+    color: #2563eb;
+}

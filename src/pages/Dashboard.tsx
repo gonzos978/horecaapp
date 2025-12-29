@@ -15,6 +15,7 @@ import { db } from "../fb/firebase";
 import { ROLE } from "../models/role";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import {useNavigate} from "react-router-dom";
 
 interface AppUser {
   readonly address: string;
@@ -50,7 +51,8 @@ const severityColors = {
 };
 
 export default function Dashboard() {
-  const { t } = useLanguage();
+    const navigate = useNavigate();
+    const { t } = useLanguage();
   const { currentUser } = useAuth();
 
   const [modalType, setModalType] = useState<"user" | "notification" | null>(
@@ -285,9 +287,10 @@ export default function Dashboard() {
             <div className="space-y-3">
               {members.map((member, index) => (
                 <div
-                  key={member.id}
-                  className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg"
-                >
+                    key={member.id}
+                    onClick={() => navigate(`/app/workers/${encodeURIComponent(member.id)}`, { state: { worker: member } })}
+                    className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg cursor-pointer
+               hover:bg-slate-100 transition">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
                       index === 0
@@ -307,7 +310,7 @@ export default function Dashboard() {
                           : "text-slate-900"
                       }`}
                     >
-                      {member.name} {member.email}
+                      {member.name}
                     </p>
                     <p
                       className={`text-sm ${
