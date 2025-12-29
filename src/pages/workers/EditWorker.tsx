@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { doc, getDoc, updateDoc, DocumentReference } from "firebase/firestore";
-import { db } from "../../fb/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../../fb/firebase";
 
 interface FormValues {
     name: string;
@@ -16,11 +17,13 @@ export default function EditWorker() {
     const { id } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [worker, setWorker] = useState<any>(location.state?.worker || null);
     const [loading, setLoading] = useState(!worker);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [photoURL, setPhotoURL] = useState(worker?.photoURL || "");
 
     const [form, setForm] = useState<FormValues>({
         name: "",
@@ -31,13 +34,22 @@ export default function EditWorker() {
         address: "",
     });
 
-    // Fetch worker from Firestore if state is missing
+    // Upload photo under customer folder
+    const handlePhotoUpload = async (file: File, workerId: string, customerId: string) => {
+        if (!file) return null;
+        const storageRef = ref(storage, `customers/${customerId}/workers/${workerId}/${file.name}`);
+        await uploadBytes(storageRef, file);
+        const downloadURL = await getDownloadURL(storageRef);
+        return downloadURL;
+    };
+
+    // Fetch worker if missing
     useEffect(() => {
         if (!worker && id) {
             const fetchWorker = async () => {
                 setLoading(true);
                 try {
-                    const docRef = doc(db, "users", encodeURIComponent(id));
+                    const docRef = doc(db, "users", id);
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) {
                         let workerData = docSnap.data();
@@ -52,6 +64,7 @@ export default function EditWorker() {
                         }
 
                         setWorker(workerData);
+                        setPhotoURL(workerData.photoURL || "");
                     } else {
                         setError("Worker not found");
                     }
@@ -65,7 +78,7 @@ export default function EditWorker() {
         }
     }, [id, worker]);
 
-    // Initialize form when worker is available
+    // Initialize form
     useEffect(() => {
         if (worker) {
             setForm({
@@ -89,24 +102,46 @@ export default function EditWorker() {
         setError(null);
 
         try {
+            let uploadedPhotoURL: string | null = worker.photoURL || null;
+
+            if (selectedFile) {
+                uploadedPhotoURL = await handlePhotoUpload(selectedFile, worker.id, worker.customerName);
+            }
+
             const docRef = doc(db, "users", worker.id);
-            console.log(worker.id)
             await updateDoc(docRef, {
                 ...form,
                 customerId: worker.customerId,
                 customerName: worker.customerName,
                 createdAt: worker.createdAt,
                 isAdmin: worker.isAdmin || false,
+                photoURL: uploadedPhotoURL,
             });
 
             navigate(`/app/workers/${encodeURIComponent(worker.id)}`, {
-                state: { worker: { ...worker, ...form } },
+                state: { worker: { ...worker, ...form, photoURL: uploadedPhotoURL } },
             });
         } catch (err: any) {
             console.error("Error updating user:", err);
             setError(err.message || "Error updating user");
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || !worker) return;
+        const file = e.target.files[0];
+        setSelectedFile(file);
+        setUploading(true);
+
+        try {
+            const url = await handlePhotoUpload(file, worker.id, worker.customerId);
+            setPhotoURL(url);
+        } catch (err) {
+            console.error("Error uploading photo:", err);
+        } finally {
+            setUploading(false);
         }
     };
 
@@ -141,6 +176,26 @@ export default function EditWorker() {
 
             {/* Form */}
             <div className="bg-white p-6 rounded-lg shadow space-y-4 max-w-xl">
+                {/* Photo */}
+                {photoURL && (
+                    <img
+                        src={photoURL}
+                        alt="Worker"
+                        className="w-32 h-32 rounded-full object-cover mb-2"
+                    />
+                )}
+                <div>
+                    <label className="block font-medium mb-1">Upload Photo</label>
+                    <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoChange}
+                        disabled={uploading}
+                        className="w-full border rounded px-3 py-2"
+                    />
+                    {uploading && <p className="text-sm text-gray-500 mt-1">Uploading...</p>}
+                </div>
+
                 <div>
                     <label className="block font-medium mb-1">Name</label>
                     <input
@@ -209,15 +264,6 @@ export default function EditWorker() {
                     />
                 </div>
 
-                <div>
-                    <label className="block font-medium mb-1">Customer</label>
-                    <input
-                        type="text"
-                        value={worker.customerName || ""}
-                        readOnly
-                        className="w-full border rounded px-3 py-2 bg-gray-100"
-                    />
-                </div>
             </div>
         </div>
     );

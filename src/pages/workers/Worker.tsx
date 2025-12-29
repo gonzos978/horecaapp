@@ -1,7 +1,7 @@
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export default function Worker() {
-    const { id } = useParams();
+
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -34,7 +34,17 @@ export default function Worker() {
         <div className="p-8">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
-                <h1 className="text-2xl font-bold text-slate-900">{worker.name}</h1>
+                <div className="flex items-center gap-4">
+                    {/* Worker Photo */}
+                    <img
+                        src={worker.photoURL || "/default-avatar.png"}
+                        alt={worker.name}
+                        className="w-16 h-16 rounded-full object-cover border border-gray-300"
+                    />
+                    {/* Worker Name */}
+                    <h1 className="text-2xl font-bold text-slate-900">{worker.name}</h1>
+                </div>
+
                 <div className="flex gap-2">
                     <button
                         onClick={handleBack}

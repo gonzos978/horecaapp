@@ -51,7 +51,7 @@ function UserRoute({ children }: { children: JSX.Element }) {
 
 // -------------------- CUSTOMER MAIN APP LAYOUT --------------------
 function CustomerMainApp() {
-    // @ts-ignore
+
     return (
         <LanguageProvider>
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
