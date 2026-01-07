@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from "react-router-dom";
+import {BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation} from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 // -------------------- LOGIN --------------------
@@ -32,6 +32,8 @@ import CookApp from "./pages/pwa/CookApp";
 import HousekeeperApp from "./pages/pwa/HousekeeperApp";
 import ManagerApp from "./pages/pwa/ManagerApp";
 import EditWorker from "./pages/workers/EditWorker.tsx";
+import {useEffect, useState} from "react";
+import { Menu as MenuIcon } from "lucide-react";
 
 // -------------------- ROUTE GUARDS --------------------
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -51,14 +53,54 @@ function UserRoute({ children }: { children: JSX.Element }) {
 
 // -------------------- CUSTOMER MAIN APP LAYOUT --------------------
 function CustomerMainApp() {
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    const currentPage = location.pathname.split("/")[2] || "home";
+
+    // Auto-close sidebar when switching to desktop
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth >= 768) {
+                setSidebarOpen(false);
+            }
+        };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
     return (
         <LanguageProvider>
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+            <div className="min-h-screen bg-slate-50">
+                {/* Mobile header */}
+                <header className="md:hidden flex items-center gap-3 p-4 bg-white border-b">
+                    <button
+                        onClick={() => setSidebarOpen(true)}
+                        className="p-2 rounded-lg hover:bg-slate-100"
+                    >
+                        <MenuIcon className="w-6 h-6" />
+                    </button>
+                    <span className="font-semibold">App</span>
+                </header>
 
-                <Navigation />
-                <main className="ml-64 p-8">
-                    {/* 👇 Outlet renders nested routes like /workers/:id */}
+                <Navigation
+                    currentPage={currentPage}
+                    onNavigate={(page) => navigate(`/app/${page}`)}
+                    isOpen={sidebarOpen}
+                    onClose={() => setSidebarOpen(false)}
+                />
+
+                {/* Overlay */}
+                {sidebarOpen && (
+                    <div
+                        className="fixed inset-0 bg-black/30 z-30 md:hidden"
+                        onClick={() => setSidebarOpen(false)}
+                    />
+                )}
+
+                <main className="md:ml-64 p-6">
                     <Outlet />
                 </main>
             </div>
