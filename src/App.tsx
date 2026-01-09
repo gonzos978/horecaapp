@@ -11,6 +11,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import AddCustomer from "./pages/admin/AddCustomer";
 import CustomersList from "./pages/admin/CustomersList";
 import AdminSettings from "./pages/admin/Settings";
+import UploadDocuments from "./pages/admin/UploadDocuments";
 
 // -------------------- CUSTOMER APP --------------------
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -34,6 +35,7 @@ import ManagerApp from "./pages/pwa/ManagerApp";
 import EditWorker from "./pages/workers/EditWorker.tsx";
 import {useEffect, useState} from "react";
 import { Menu as MenuIcon } from "lucide-react";
+
 
 // -------------------- ROUTE GUARDS --------------------
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -132,6 +134,8 @@ export default function App() {
                         <Route path="customers/add" element={<AddCustomer />} />
                         <Route path="users" element={<CustomersList />} />
                         <Route path="settings" element={<AdminSettings />} />
+                        <Route path="documents" element={<UploadDocuments />} />
+
                     </Route>
 
                     {/* CUSTOMER APP AREA */}

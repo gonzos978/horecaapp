@@ -1,0 +1,174 @@
+import { useEffect, useState } from "react";
+import {
+    addDoc,
+    collection,
+    onSnapshot,
+    orderBy,
+    serverTimestamp,
+    deleteDoc,
+    doc, query
+} from "firebase/firestore";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
+import { db, storage } from "../../fb/firebase";
+import { useAuth } from "../../contexts/AuthContext";
+import "./../../styles/UploadDocuments.css";
+
+export default function UploadDocuments() {
+    const { user, isSuperAdmin } = useAuth();
+
+    const [file, setFile] = useState<File | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [progress, setProgress] = useState(0);
+
+    const [documents, setDocuments] = useState<any[]>([]);
+    const [listLoading, setListLoading] = useState(true);
+
+    if (!user) return <p>Please log in.</p>;
+    if (!isSuperAdmin) return <p>You do not have permission.</p>;
+
+    // 🔹 Listen to all documents, filter in-memory
+    useEffect(() => {
+        const q = query(
+            collection(db, "documents"),
+            orderBy("createdAt", "desc")
+        );
+
+        const unsub = onSnapshot(
+            q,
+            (snap) => {
+                const docs = snap.docs
+                    .map((d) => ({
+                        id: d.id,
+                        ...d.data(),
+                        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date()
+                    }))
+                    .filter((d) => d.ownerId === user.uid); // 🔹 filter in-memory
+                setDocuments(docs);
+                setListLoading(false);
+            },
+            (err) => console.error("Firestore error:", err)
+        );
+
+        return () => unsub();
+    }, [user]);
+
+    // 🔹 Delete document
+    const handleDelete = async (docId: string, fileUrl: string) => {
+        if (!window.confirm("Are you sure?")) return;
+
+        try {
+            setLoading(true);
+
+            // Optimistic UI
+            setDocuments((prev) => prev.filter((d) => d.id !== docId));
+
+            await deleteDoc(doc(db, "documents", docId));
+
+            const path = fileUrl
+                .split("/o/")[1]
+                .split("?")[0]; // convert URL to Storage path
+            await deleteObject(ref(storage, decodeURIComponent(path)));
+
+            setLoading(false);
+        } catch (err) {
+            console.error("Delete failed:", err);
+            setLoading(false);
+        }
+    };
+
+    // 🔹 Upload document
+    const handleUpload = async () => {
+        if (!file) return alert("Please select a file");
+
+        setLoading(true);
+        setProgress(0);
+
+        const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+
+        uploadTask.on(
+            "state_changed",
+            (snapshot) => {
+                const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                setProgress(Math.round(percent));
+            },
+            (error) => {
+                console.error(error);
+                alert("Upload failed");
+                setLoading(false);
+            },
+            async () => {
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+
+                const docRef = await addDoc(collection(db, "documents"), {
+                    fileName: file.name,
+                    fileUrl: downloadURL,
+                    contentType: file.type,
+                    uploadedBy: user.email,
+                    ownerId: user.uid,
+                    createdAt: serverTimestamp()
+                });
+
+                // Optimistic UI update
+                setDocuments((prev) => [
+                    {
+                        id: docRef.id,
+                        fileName: file.name,
+                        fileUrl: downloadURL,
+                        contentType: file.type,
+                        uploadedBy: user.email,
+                        ownerId: user.uid,
+                        createdAt: new Date()
+                    },
+                    ...prev
+                ]);
+
+                setFile(null);
+                setProgress(0);
+                setLoading(false);
+            }
+        );
+    };
+
+    return (
+        <div className="upload-documents">
+            <h2>Upload Documents</h2>
+
+            <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+
+            {progress > 0 && (
+                <div className="progress">
+                    <div className="bar" style={{ width: `${progress}%` }} />
+                </div>
+            )}
+
+            <button onClick={handleUpload} disabled={loading}>
+                {loading ? "Uploading..." : "Upload Document"}
+            </button>
+
+            <hr style={{ margin: "24px 0", opacity: 0.2 }} />
+
+            <h3>Uploaded Documents</h3>
+            {listLoading && <p>Loading documents…</p>}
+            {!listLoading && documents.length === 0 && <p style={{ color: "#777" }}>No documents uploaded yet.</p>}
+
+            <div className="documents-cards">
+                {documents.map((doc) => (
+                    <div key={doc.id} className="document-card">
+                        <div className="card-header">
+                            <strong>{doc.fileName}</strong>
+                            <span>Uploaded by {doc.uploadedBy}</span>
+                        </div>
+                        <div className="card-footer">
+                            <small>{doc.createdAt.toLocaleString()}</small>
+                            <div className="card-actions">
+                                <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">Open</a>
+                                <button className="delete-btn" onClick={() => handleDelete(doc.id, doc.fileUrl)}>Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
