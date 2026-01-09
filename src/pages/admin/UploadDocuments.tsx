@@ -74,6 +74,7 @@ export default function UploadDocuments() {
             async () => {
                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
 
+                // @ts-ignore
                 const docRef = await addDoc(collection(db, "documents"), {
                     fileName: file.name,
                     fileUrl: downloadURL,
