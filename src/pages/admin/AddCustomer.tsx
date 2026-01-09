@@ -4,6 +4,8 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { db, auth } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import { ROLE } from "../../models/role";
+import "./../../styles/AddCustomer.css";
+
 
 export default function AddCustomer() {
   const { isSuperAdmin, user } = useAuth();
@@ -69,60 +71,65 @@ export default function AddCustomer() {
   if (!user) return <p>Please log in to access this page.</p>;
   if (!isSuperAdmin) return <p>You do not have permission to add customers.</p>;
 
-  return (
-    <div style={{ padding: 20, maxWidth: 500 }}>
-      <h2>Add New Customer</h2>
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: 10 }}
-      >
-        <input
-          name="customerName"
-          placeholder="Customer Name"
-          value={form.customerName}
-          onChange={handleChange}
-          required
-        />
-        <input
-          name="address"
-          placeholder="Address"
-          value={form.address}
-          onChange={handleChange}
-        />
-        <input
-          name="phone"
-          placeholder="Phone"
-          value={form.phone}
-          onChange={handleChange}
-        />
-        <h3>Admin Credentials</h3>
-        <input
-          name="name"
-          placeholder="Admin Name"
-          value={form.name}
-          onChange={handleChange}
-        />
-        <input
-          name="email"
-          placeholder="Admin Email"
-          type="email"
-          value={form.email}
-          onChange={handleChange}
-          required
-        />
-        <input
-          name="password"
-          placeholder="Admin Password"
-          type="password"
-          value={form.password}
-          onChange={handleChange}
-          required
-        />
+    return (
+        <div className="add-customer">
+            <h2>Add New Customer</h2>
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Creating..." : "Create Customer"}
-        </button>
-      </form>
-    </div>
-  );
+            <form onSubmit={handleSubmit}>
+                <input
+                    name="customerName"
+                    placeholder="Customer Name"
+                    value={form.customerName}
+                    onChange={handleChange}
+                    required
+                />
+
+                <input
+                    name="address"
+                    placeholder="Address"
+                    value={form.address}
+                    onChange={handleChange}
+                />
+
+                <input
+                    name="phone"
+                    placeholder="Phone"
+                    value={form.phone}
+                    onChange={handleChange}
+                />
+
+                <h3>Admin Credentials</h3>
+
+                <input
+                    name="name"
+                    placeholder="Admin Name"
+                    value={form.name}
+                    onChange={handleChange}
+                />
+
+                <input
+                    name="email"
+                    placeholder="Admin Email"
+                    type="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    required
+                />
+
+                <input
+                    name="password"
+                    placeholder="Admin Password"
+                    type="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    required
+                />
+
+                <button type="submit" disabled={loading}>
+                    {loading ? "Creating..." : "Create Customer"}
+                </button>
+            </form>
+        </div>
+    );
+
 }
