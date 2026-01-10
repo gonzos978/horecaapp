@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ClipboardCheck, Circle, Trash } from 'lucide-react';
+import { Circle, Trash } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { auth, db } from '../fb/firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
