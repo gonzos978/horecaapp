@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { GraduationCap, Play, FileText, Award, Clock } from 'lucide-react';
+import { GraduationCap, Play, FileText, Award} from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import Header from '../components/Header';
-import { getDownloadURL, getStorage, ref, uploadBytes, listAll } from "firebase/storage";
-import { addDoc, collection, serverTimestamp} from "firebase/firestore";
+import { getDownloadURL, getStorage, ref, uploadBytes, listAll, deleteObject } from "firebase/storage";
+import { collection, getDocs} from "firebase/firestore";
 import { db } from "../fb/firebase.ts";
 import { getAuth } from "firebase/auth";
 
@@ -11,17 +11,16 @@ export default function Training() {
     const { t, language } = useLanguage();
 
     const [positions, setPositions] = useState<any[]>([]);
-
-    // @ts-ignore
     const [modules, setModules] = useState<any[]>([]);
+    const [publicModules, setPublicModules] = useState<any[]>([]);
     const [selectedPosition, setSelectedPosition] = useState<string | null>(null);
+    const [positionCounters, setPositionCounters] = useState<Record<string, number>>({});
 
     const [uploading, setUploading] = useState(false);
     const [workerType, setWorkerType] = useState("");
     const [file, setFile] = useState<File | null>(null);
     const [fileInputKey, setFileInputKey] = useState(Date.now());
-    const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
-    const [positionCounters, setPositionCounters] = useState<Record<string, number>>({});
+    const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
 
     const auth = getAuth();
     const user = auth.currentUser;
@@ -34,12 +33,16 @@ export default function Training() {
         { value: "sanker", label: "Šanker" },
     ];
 
+    const contentTypeIcons = { VIDEO: Play, QUIZ: FileText, PRACTICE: Award, DOCUMENT: FileText, INTERACTIVE: Award };
+    const contentTypeColors = { VIDEO: 'bg-red-100 text-red-800', QUIZ: 'bg-blue-100 text-blue-800', PRACTICE: 'bg-purple-100 text-purple-800', DOCUMENT: 'bg-slate-100 text-slate-800', INTERACTIVE: 'bg-emerald-100 text-emerald-800' };
+
     useEffect(() => {
         loadPositions();
-        loadUploadedFiles();
+        loadPrivateModules();
+        loadPublicModules();
     }, []);
 
-    const loadPositions = async () => {
+    const loadPositions = () => {
         const pos = [
             { id: '1', code: 'konobar', name_en: 'Waiter', name_bs: 'Konobar' },
             { id: '2', code: 'kuvar', name_en: 'Chef', name_bs: 'Kuvar' },
@@ -49,37 +52,77 @@ export default function Training() {
         setPositions(pos);
     };
 
-    const loadUploadedFiles = async () => {
+    const getPositionCodeFromFileName = (fileName: string) => {
+        const lower = fileName.toLowerCase();
+        if (lower.includes("konobar")) return "konobar";
+        if (lower.includes("kuvar")) return "kuvar";
+        if (lower.includes("sobarica")) return "sobarica";
+        if (lower.includes("šanker") || lower.includes("barmen")) return "sanker";
+        return "";
+    };
+
+    const getAllModules = () => [...modules, ...publicModules];
+
+    const getPositionModules = (positionCode: string) => {
+        return getAllModules().filter(m => m.position_code === positionCode);
+    };
+
+    const calculatePositionCounters = () => {
+        const counters: Record<string, number> = {};
+        getAllModules().forEach(m => {
+            if (!m.position_code) return;
+            counters[m.position_code] = (counters[m.position_code] || 0) + 1;
+        });
+        setPositionCounters(counters);
+    };
+
+    const loadPrivateModules = async () => {
         if (!userId) return;
 
         const storage = getStorage();
-        const counters: Record<string, number> = {};
-        const files: any[] = [];
+        const allModules: any[] = [];
 
-        // For each worker type, check the folder in Storage
         for (const w of workerTypes) {
             const folderRef = ref(storage, `training-instructions/${userId}/${w.value}`);
             try {
                 const list = await listAll(folderRef);
-                counters[w.value] = list.items.length;
 
-                // Also build uploaded files list
                 for (const itemRef of list.items) {
                     const url = await getDownloadURL(itemRef);
-                    files.push({
+                    allModules.push({
+                        id: itemRef.name,
+                        position_code: w.value,
                         fileName: itemRef.name,
                         fileUrl: url,
-                        workerType: w.value
+                        isPublic: false,
+                        content_type: "DOCUMENT",
                     });
                 }
             } catch (err) {
-                // If folder doesn’t exist, just continue
-                counters[w.value] = 0;
+                // Folder might not exist, ignore
             }
         }
-        console.log("Uploaded files:", files);
-        setUploadedFiles(files);
-        setPositionCounters(counters);
+
+        setModules(allModules);
+        calculatePositionCounters();
+    };
+
+    const loadPublicModules = async () => {
+        try {
+            const snapshot = await getDocs(collection(db, "documents"));
+            const docs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                isPublic: true,
+                fileName: doc.data().fileName,
+                fileUrl: doc.data().fileUrl,
+                position_code: getPositionCodeFromFileName(doc.data().fileName),
+                content_type: "DOCUMENT"
+            }));
+            setPublicModules(docs);
+            calculatePositionCounters();
+        } catch (err) {
+            console.error("Error loading public modules:", err);
+        }
     };
 
     const uploadInstruction = async () => {
@@ -102,111 +145,104 @@ export default function Training() {
         try {
             const uniqueName = `${Date.now()}-${file.name}`;
             const storageRef = ref(getStorage(), `training-instructions/${userId}/${workerType}/${uniqueName}`);
+            await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(storageRef);
 
-            const snapshot = await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(snapshot.ref);
-
-            // Store in Firestore
-            await addDoc(collection(db, "training-instructions"), {
-                workerType,
-                fileUrl: downloadURL,
+            const newModule = {
+                id: uniqueName,
+                position_code: workerType,
                 fileName: file.name,
-                uploadedAt: serverTimestamp(),
-                userId
-            });
+                fileUrl: downloadURL,
+                isPublic: false,
+                content_type: "DOCUMENT",
+            };
 
-            setUploadedFiles(prev => [...prev, { fileName: file.name, fileUrl: downloadURL, workerType }]);
-            setPositionCounters(prev => ({
-                ...prev,
-                [workerType]: (prev[workerType] || 0) + 1
-            }));
+            setModules(prev => [...prev, newModule]);
+            calculatePositionCounters();
 
             alert("Instrukcija uspješno uploadovana");
 
             setFile(null);
             setWorkerType("");
             setFileInputKey(Date.now());
-        } catch (err: any) {
-            console.error("Full Error Object:", err);
-            console.log("Error Code:", err.code);
-            console.log("Error Message:", err.message);
-            alert(`Greška: ${err.code || 'Unknown error'}`);
+        } catch (err) {
+            console.error(err);
+            alert("Greška pri uploadu PDF-a");
         } finally {
             setUploading(false);
         }
     };
 
-    const getPositionModules = (positionCode: string) => {
-        return modules.filter(m => m.position_code === positionCode);
-    };
+    const deletePdf = async () => {
+        if (!deleteTarget) return;
 
-    const contentTypeIcons = { VIDEO: Play, QUIZ: FileText, PRACTICE: Award, DOCUMENT: FileText, INTERACTIVE: Award };
-    const contentTypeColors = { VIDEO: 'bg-red-100 text-red-800', QUIZ: 'bg-blue-100 text-blue-800', PRACTICE: 'bg-purple-100 text-purple-800', DOCUMENT: 'bg-slate-100 text-slate-800', INTERACTIVE: 'bg-emerald-100 text-emerald-800' };
+        try {
+            const storage = getStorage();
+            if (!deleteTarget.isPublic) {
+                const fileRef = ref(storage, `training-instructions/${userId}/${deleteTarget.position_code}/${deleteTarget.id}`);
+                await deleteObject(fileRef);
+                setModules(prev => prev.filter(m => m.id !== deleteTarget.id));
+            } else {
+                // Optionally delete from Firestore
+                setPublicModules(prev => prev.filter(m => m.id !== deleteTarget.id));
+            }
+
+            setDeleteTarget(null);
+            calculatePositionCounters();
+        } catch (err) {
+            console.error("Delete error:", err);
+            alert("Greška pri brisanju PDF-a");
+        }
+    };
 
     return (
         <div className="space-y-6">
-            <Header title={t('training.title')} subtitle={`${positions.length} pozicija, ${modules.length} modula`} />
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 animate-fadeIn">
+                        <h3 className="text-lg font-bold text-slate-900">Obriši PDF?</h3>
+                        <p className="mt-2 text-slate-600">
+                            Da li ste sigurni da želite obrisati <span className="font-semibold text-slate-900">{deleteTarget.fileName}</span>?<br/>
+                            Ova akcija je nepovratna.
+                        </p>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Otkaži</button>
+                            <button onClick={deletePdf} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Obriši</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <Header title={t('training.title')} subtitle={`${positions.length} pozicija, ${getAllModules().length} modula`} />
 
             {/* Upload Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <h3 className="text-lg font-bold text-slate-900 mb-4">📄 Upload PDF instrukcija</h3>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <select value={workerType} onChange={e => setWorkerType(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2">
                         <option value="">Izaberite tip radnika</option>
                         {workerTypes.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
                     </select>
-
-                    <input
-                        key={fileInputKey}
-                        type="file"
-                        accept="application/pdf"
-                        onChange={e => setFile(e.target.files?.[0] || null)}
-                        className="border border-slate-300 rounded-lg px-3 py-2"
-                    />
-
-                    <button
-                        onClick={uploadInstruction}
-                        disabled={uploading}
-                        className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
-                    >
+                    <input key={fileInputKey} type="file" accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="border border-slate-300 rounded-lg px-3 py-2" />
+                    <button onClick={uploadInstruction} disabled={uploading} className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 disabled:opacity-50">
                         {uploading ? "Uploadujem..." : "Upload PDF"}
                     </button>
                 </div>
-
-                {uploadedFiles.length > 0 && (
-                    <div className="mt-6">
-                        <h4 className="text-md font-semibold text-slate-700 mb-2">Uploaded PDFs</h4>
-                        <ul className="list-disc list-inside space-y-1">
-                            {uploadedFiles.map(file => (
-                                <li key={file.fileUrl}>
-                                    <a href={file.fileUrl} target="_blank" className="text-blue-600 hover:underline">
-                                        {file.fileName} ({file.workerType})
-                                    </a>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
             </div>
 
-            {/* Positions + Modules with PDF counters */}
+            {/* Positions + Modules */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-1 space-y-2">
                     <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider px-2">Pozicije</h3>
                     <div className="space-y-1">
-                        {positions.slice(0, 20).map(position => {
+                        {positions.map(position => {
                             const isSelected = selectedPosition === position.code;
                             const posModules = getPositionModules(position.code);
                             const nameKey = `name_${language}` as keyof typeof position;
                             const counter = positionCounters[position.code] || 0;
 
                             return (
-                                <button
-                                    key={position.id}
-                                    onClick={() => setSelectedPosition(position.code)}
-                                    className={`w-full text-left px-4 py-3 rounded-lg transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}
-                                >
+                                <button key={position.code} onClick={() => setSelectedPosition(position.code)} className={`w-full text-left px-4 py-3 rounded-lg transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}>
                                     <div className="font-medium">{position[nameKey]}</div>
                                     <div className={`text-xs mt-1 ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
                                         {posModules.length} modula • {counter} PDF
@@ -217,7 +253,6 @@ export default function Training() {
                     </div>
                 </div>
 
-                {/* Modules Section */}
                 <div className="lg:col-span-3">
                     {selectedPosition ? (
                         <div className="space-y-4">
@@ -227,8 +262,6 @@ export default function Training() {
 
                             {getPositionModules(selectedPosition).map(module => {
                                 const Icon = contentTypeIcons[module.content_type as keyof typeof contentTypeIcons];
-                                const titleKey = `title_${language}` as keyof typeof module;
-
                                 return (
                                     <div key={module.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md hover:border-blue-300 transition-all">
                                         <div className="flex items-start justify-between">
@@ -236,31 +269,16 @@ export default function Training() {
                                                 <div className={`p-3 rounded-lg ${contentTypeColors[module.content_type as keyof typeof contentTypeColors]}`}>
                                                     <Icon className="w-6 h-6" />
                                                 </div>
-
                                                 <div className="flex-1">
-                                                    <h3 className="text-lg font-bold text-slate-900">{module[titleKey]}</h3>
-                                                    <div className="flex items-center gap-4 mt-2 text-sm text-slate-600">
-                                                        <span className="flex items-center gap-1">
-                                                            <Clock className="w-4 h-4" />
-                                                            {module.duration_minutes} min
-                                                        </span>
-                                                        <span className={`px-2 py-1 rounded text-xs font-medium ${contentTypeColors[module.content_type as keyof typeof contentTypeColors]}`}>
-                                                            {module.content_type}
-                                                        </span>
-                                                        {module.mandatory && <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">Obavezno</span>}
-                                                    </div>
-
-                                                    {module.quiz_questions && JSON.parse(module.quiz_questions).length > 0 && (
-                                                        <div className="mt-3 text-sm text-slate-600">
-                                                            📝 {JSON.parse(module.quiz_questions).length} pitanja • Prolaznost: {module.passing_score}%
-                                                        </div>
-                                                    )}
+                                                    <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                                        {module.fileName}
+                                                        {module.isPublic && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-semibold">Javno</span>}
+                                                    </h3>
                                                 </div>
                                             </div>
-
-                                            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                                                Započni
-                                            </button>
+                                            <a href={module.fileUrl} target="_blank" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                                                Read
+                                            </a>
                                         </div>
                                     </div>
                                 );
