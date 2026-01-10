@@ -31,7 +31,7 @@ export default function Navigation({
     const {t} = useLanguage();
 
     const menuItems = [
-        {id: "dashboard", icon: LayoutDashboard, label: t("nav.dashboard")},
+        {id: "home", icon: LayoutDashboard, label: t("nav.dashboard")},
         {id: "tasks", icon: ListTodo, label: t("nav.tasks")},
         {id: "artikli", icon: Package, label: t("nav.artikli")},
         {id: "menu", icon: UtensilsCrossed, label: t("nav.menu")},
