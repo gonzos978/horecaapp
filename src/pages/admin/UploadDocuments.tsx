@@ -8,7 +8,6 @@ import {
     deleteDoc,
     doc,
     query,
-    where
 } from "firebase/firestore";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "../../fb/firebase";
@@ -32,9 +31,9 @@ export default function UploadDocuments() {
     useEffect(() => {
         if (!user) return;
 
+        console.log(user.uid)
         const q = query(
             collection(db, "documents"),
-            where("ownerId", "==", user.uid),
             orderBy("createdAt", "desc")
         );
 
