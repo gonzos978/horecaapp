@@ -32,7 +32,7 @@ export default function Navigation({
 
     const menuItems = [
         {id: "home", icon: LayoutDashboard, label: t("nav.dashboard")},
-        {id: "tasks", icon: ListTodo, label: t("nav.tasks")},
+        {id: "tasks", icon: ListTodo, label: t("nav.workers")},
         {id: "artikli", icon: Package, label: t("nav.artikli")},
         {id: "menu", icon: UtensilsCrossed, label: t("nav.menu")},
         {id: "alerts", icon: Bell, label: t("nav.alerts")},
