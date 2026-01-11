@@ -11,10 +11,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.57.4",
     "date-fns": "^4.1.0",
     "firebase": "^12.6.0",
     "lucide-react": "^0.344.0",
+    "pdf-parse": "^2.4.5",
+    "pdf-ts": "^0.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.68.0",
@@ -24,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
