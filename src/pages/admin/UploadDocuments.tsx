@@ -13,6 +13,7 @@ import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebas
 import { db, storage } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import "./../../styles/UploadDocuments.css";
+import { getFunctions, httpsCallable } from "firebase/functions"; // CORRECT for frontend
 
 export default function UploadDocuments() {
     const { user, isSuperAdmin } = useAuth();
@@ -106,45 +107,57 @@ export default function UploadDocuments() {
         }
     };
 
+    const handleCreateQuiz = async (docId: string) => {
+        const functions = getFunctions();
+        // Create a reference to your function
+        const createQuiz = httpsCallable(functions, 'createQuizFromPdf');
+
+        try {
+            // Just call it like a regular function!
+            // No need for URLs, JSON.stringify, or headers.
+            const result = await createQuiz({ documentId: docId });
+
+            console.log("Success:", result.data);
+            alert("Quiz created successfully!");
+        } catch (err: any) {
+            // Firebase automatically parses the HttpsError you threw in the backend
+            console.error("Error code:", err.code);
+            alert(err.message || "Failed to create quiz");
+        }
+    };
+
     return (
-        <div className="upload-documents">
-            <h2>Upload Documents</h2>
+        <div className="documents-cards-row">
+            {documents.map((doc) => (
+                <div key={doc.id} className="document-card">
+                    <div className="card-header">
+                        <strong>{doc.fileName}</strong>
+                        <span>Uploaded by {doc.uploadedBy}</span>
+                    </div>
+                    <div className="card-footer">
+                        <small>{doc.createdAt.toLocaleString()}</small>
+                        <div className="card-actions">
+                            <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">Open</a>
 
-            <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                            {/* Create Quiz button */}
+                            <button
+                                className="quiz-btn"
+                                onClick={() => handleCreateQuiz(doc.id)}
+                            >
+                                Create Quiz
+                            </button>
 
-            {progress > 0 && (
-                <div className="progress">
-                    <div className="bar" style={{ width: `${progress}%` }} />
-                </div>
-            )}
-
-            <button onClick={handleUpload} disabled={loading}>
-                {loading ? "Uploading..." : "Upload Document"}
-            </button>
-
-            <hr style={{ margin: "24px 0", opacity: 0.2 }} />
-
-            <h3>Uploaded Documents</h3>
-            {listLoading && <p>Loading documents…</p>}
-            {!listLoading && !documents.length && <p style={{ color: "#777" }}>No documents uploaded yet.</p>}
-
-            <div className="documents-cards-row">
-                {documents.map((doc) => (
-                    <div key={doc.id} className="document-card">
-                        <div className="card-header">
-                            <strong>{doc.fileName}</strong>
-                            <span>Uploaded by {doc.uploadedBy}</span>
-                        </div>
-                        <div className="card-footer">
-                            <small>{doc.createdAt.toLocaleString()}</small>
-                            <div className="card-actions">
-                                <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">Open</a>
-                                <button className="delete-btn" onClick={() => handleDelete(doc.id, doc.fileUrl)}>Delete</button>
-                            </div>
+                            <button
+                                className="delete-btn"
+                                onClick={() => handleDelete(doc.id, doc.fileUrl)}
+                            >
+                                Delete
+                            </button>
                         </div>
                     </div>
-                ))}
-            </div>
+                </div>
+            ))}
         </div>
+
     );
 }

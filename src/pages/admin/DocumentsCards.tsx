@@ -64,12 +64,27 @@ export default function DocumentsCards({ newDoc }: DocumentsCardsProps) {
                     <div className="card-footer">
                         <small>{doc.createdAt.toLocaleString()}</small>
                         <div className="card-actions">
-                            <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">Open</a>
-                            <button className="delete-btn" onClick={() => handleDelete(doc.id, doc.fileUrl)}>Delete</button>
+                            <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">Open Foo</a>
+
+                            {/* Create Quiz button */}
+                            <button
+                                className="quiz-btn"
+                                onClick={() => alert(`Create quiz for ${doc.fileName}`)}
+                            >
+                                Create Quiz
+                            </button>
+
+                            <button
+                                className="delete-btn"
+                                onClick={() => handleDelete(doc.id, doc.fileUrl)}
+                            >
+                                Delete
+                            </button>
                         </div>
                     </div>
                 </div>
             ))}
         </div>
     );
+
 }
