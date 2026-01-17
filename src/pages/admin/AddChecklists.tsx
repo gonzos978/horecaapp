@@ -1,4 +1,4 @@
-import { useState } from "react";
+import {useEffect, useState} from "react";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
     SelectValue
 } from "@/components/ui/select";
 import { Plus, Trash, Clock, ClipboardList } from "lucide-react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import {addDoc, collection, getDocs, serverTimestamp, collectionGroup} from "firebase/firestore";
 import { db } from "@/fb/firebase";
 
 type Role = "waiter" | "chef" | "manager";
@@ -32,6 +32,30 @@ export default function AdminAddChecklist() {
     const [timePeriod, setTimePeriod] = useState(""); // State for "PRIJE POČETKA SMJENE..."
     const [role, setRole] = useState<Role>("waiter");
     const [zones, setZones] = useState<ZoneForm[]>([]);
+    const [suggestedZones, setSuggestedZones] = useState<string[]>([]);
+    const [defaultZones] = useState(["Bar"]);
+
+
+    useEffect(() => {
+        const fetchExistingZones = async () => {
+            try {
+                const querySnapshot = await getDocs(collectionGroup(db, "zones"));
+                const names = querySnapshot.docs.map(doc => doc.data().title);
+
+                // Merge defaults with database names, then filter unique
+                const combined = [...names, ...defaultZones];
+                const uniqueNames = Array.from(new Set(combined))
+                    .filter(Boolean)
+                    .slice(0, 8); // Limit to top 8
+
+                setSuggestedZones(uniqueNames);
+            } catch (e) {
+                console.error("Suggestions error:", e);
+                setSuggestedZones(defaultZones); // Fallback to defaults on error
+            }
+        };
+        fetchExistingZones();
+    }, []);
 
     const addZone = () =>
         setZones([...zones, { id: crypto.randomUUID(), title: "", items: [] }]);
@@ -137,16 +161,18 @@ export default function AdminAddChecklist() {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Time Period / Schedule</label>
-                        <div className="relative">
-                            <Clock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                className="pl-9"
-                                placeholder="e.g., PRIJE POČETKA SMJENE (60 min prije otvaranja)"
-                                value={timePeriod}
-                                onChange={e => setTimePeriod(e.target.value)}
-                            />
-                        </div>
+                        <label className="text-sm font-medium">Shift Phase</label>
+                        <Select value={timePeriod} onValueChange={setTimePeriod}>
+                            <SelectTrigger>
+                                <Clock className="w-4 h-4 mr-2" />
+                                <SelectValue placeholder="Select shift phase..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Start shift">Start shift (Opening)</SelectItem>
+                                <SelectItem value="During shift">During shift (Running)</SelectItem>
+                                <SelectItem value="End shift">End shift (Closing)</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     <div className="space-y-2">
@@ -161,6 +187,7 @@ export default function AdminAddChecklist() {
             </Card>
 
             {/* Zones Section */}
+            {/* Zones Section */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold italic text-muted-foreground">Checklist Zones</h3>
@@ -172,29 +199,54 @@ export default function AdminAddChecklist() {
                 {zones.map((zone, zi) => (
                     <Card key={zone.id} className="relative overflow-hidden">
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-secondary" />
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <Input
-                                className="font-bold text-lg border-none focus-visible:ring-0 p-0 h-auto w-full shadow-none bg-transparent"
-                                placeholder="Zone Title (e.g., Main Hall)"
-                                value={zone.title}
-                                onChange={e => {
-                                    const copy = [...zones];
-                                    copy[zi].title = e.target.value;
-                                    setZones(copy);
-                                }}
-                            />
-                            <Button size="icon" variant="ghost" onClick={() => removeZone(zi)} className="text-destructive hover:text-destructive hover:bg-destructive/10">
-                                <Trash size={18} />
-                            </Button>
+                        <CardHeader className="pb-2">
+                            <div className="flex flex-col gap-2 w-full">
+                                <div className="flex items-center justify-between">
+                                    <Input
+                                        className="font-bold text-lg border-none focus-visible:ring-0 p-0 h-auto w-full shadow-none bg-transparent"
+                                        placeholder="Zone Name (e.g., Kitchen)..."
+                                        value={zone.title}
+                                        onChange={e => {
+                                            const copy = [...zones];
+                                            copy[zi].title = e.target.value;
+                                            setZones(copy);
+                                        }}
+                                    />
+                                    <Button size="icon" variant="ghost" onClick={() => removeZone(zi)} className="text-destructive">
+                                        <Trash size={18} />
+                                    </Button>
+                                </div>
+
+                                {/* Suggestions UI - Show only if title is empty */}
+                                {zone.title === "" && (
+                                    <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
+                                        {suggestedZones.map(suggestion => (
+                                            <Button
+                                                key={suggestion}
+                                                variant="secondary"
+                                                size="sm"
+                                                className="h-7 px-3 text-xs rounded-full"
+                                                onClick={() => {
+                                                    const copy = [...zones];
+                                                    copy[zi].title = suggestion;
+                                                    setZones(copy);
+                                                }}
+                                            >
+                                                {suggestion}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </CardHeader>
 
                         <CardContent className="space-y-3">
+                            {/* ITEMS MAP - This is for the actual tasks */}
                             {zone.items.map((item, ii) => (
-                                <div key={item.id} className="flex items-center gap-3 bg-muted/30 p-2 rounded-md group">
-                                    <span className="text-xs font-mono text-muted-foreground w-4">{ii + 1}</span>
+                                <div key={item.id} className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground w-5">{ii + 1}.</span>
                                     <Input
-                                        className="border-none focus-visible:ring-0 bg-transparent h-8 p-0"
-                                        placeholder="Add task..."
+                                        placeholder="Checklist item task..."
                                         value={item.text}
                                         onChange={e => {
                                             const copy = [...zones];
@@ -205,10 +257,9 @@ export default function AdminAddChecklist() {
                                     <Button
                                         size="icon"
                                         variant="ghost"
-                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                                         onClick={() => removeItem(zi, ii)}
                                     >
-                                        <Trash size={14} />
+                                        <Trash size={16} />
                                     </Button>
                                 </div>
                             ))}
