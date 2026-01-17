@@ -35,6 +35,9 @@ import ManagerApp from "./pages/pwa/ManagerApp";
 import EditWorker from "./pages/workers/EditWorker.tsx";
 import {useEffect, useState} from "react";
 import { Menu as MenuIcon } from "lucide-react";
+import AdminEditChecklist from "./pages/admin/AdminEditChecklist.tsx";
+import ChecklistListView from "./pages/admin/ChecklistListView.tsx";
+import AdminAddChecklist from "./pages/admin/AddChecklists.tsx";
 
 
 // -------------------- ROUTE GUARDS --------------------
@@ -135,6 +138,10 @@ export default function App() {
                         <Route path="users" element={<CustomersList />} />
                         <Route path="settings" element={<AdminSettings />} />
                         <Route path="documents" element={<UploadDocuments />} />
+                        <Route path="add-checklist" element={<AdminAddChecklist />} />
+                        <Route path="view-checklist" element={<ChecklistListView />} />
+                        <Route path="edit-checklist/:id" element={<AdminEditChecklist />} />
+
 
                     </Route>
 

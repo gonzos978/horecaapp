@@ -31,6 +31,12 @@ export default function AdminSidebar() {
           <NavLink to="/admin/documents" style={linkStyle}>
               Upload documents
           </NavLink>
+          <NavLink to="/admin/add-checklist" style={linkStyle}>
+              Add checklist
+          </NavLink>
+          <NavLink to="/admin/view-checklist" style={linkStyle}>
+              View checklist
+          </NavLink>
         <NavLink to="/admin/settings" style={linkStyle}>
           Settings
         </NavLink>
