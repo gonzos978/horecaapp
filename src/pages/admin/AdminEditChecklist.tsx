@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardContent} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -101,9 +101,12 @@ export default function AdminEditChecklist() {
                     <Select value={role} onValueChange={(v: Role) => setRole(v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
+                            <SelectItem value="headwaiter">Head Waiter</SelectItem>
                             <SelectItem value="waiter">Waiter</SelectItem>
+                            <SelectItem value="headchef">Head Chef</SelectItem>
                             <SelectItem value="chef">Chef</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="hotelmanager">Hotel Manager</SelectItem>
+                            <SelectItem value="receptionist">Recepcioner</SelectItem>
                         </SelectContent>
                     </Select>
                 </CardContent>

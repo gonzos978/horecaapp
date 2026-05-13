@@ -123,9 +123,12 @@ export default function ChecklistListView() {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Roles</SelectItem>
+                        <SelectItem value="headwaiter">Head Waiter</SelectItem>
                         <SelectItem value="waiter">Waiter</SelectItem>
                         <SelectItem value="chef">Chef</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="headchef">Head Chef</SelectItem>
+                        <SelectItem value="hotelmanager">Hotel Manager</SelectItem>
+                        <SelectItem value="receptionist">Recepcioner</SelectItem>
                     </SelectContent>
                 </Select>
 

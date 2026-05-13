@@ -152,9 +152,12 @@ export default function AdminAddChecklist() {
                                     <SelectValue placeholder="Select role" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="headwaiter">Head Waiter</SelectItem>
                                     <SelectItem value="waiter">Waiter</SelectItem>
+                                    <SelectItem value="headchef">Head Chef</SelectItem>
                                     <SelectItem value="chef">Chef</SelectItem>
-                                    <SelectItem value="manager">Manager</SelectItem>
+                                    <SelectItem value="hotelmanager">Hotel Manager</SelectItem>
+                                    <SelectItem value="receptionist">Receptioner</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
