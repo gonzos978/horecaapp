@@ -1,135 +1,184 @@
-import React, { useState } from "react";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { db, auth } from "../../fb/firebase";
+import React, { useMemo, useState } from "react";
+import { httpsCallable } from "firebase/functions";
+
+import { functions } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
-import { ROLE } from "../../models/role";
+
 import "./../../styles/AddCustomer.css";
 
-
 export default function AddCustomer() {
-  const { isSuperAdmin, user } = useAuth();
+    const { isSuperAdmin, user } = useAuth();
 
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    address: "",
-    customerId: "",
-    customerName: "",
-    email: "",
-    isAdmin: false,
-    name: "",
-    password: "",
-    phone: "",
-    role: ROLE.CUSTOMER,
-    type: ROLE.CUSTOMER,
-  });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [showSuccess, setShowSuccess] = useState(false);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+    const [form, setForm] = useState({
+        customerName: "",
+        address: "",
+        phone: "",
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+        adminName: "",
+        adminEmail: "",
+        adminPassword: "",
+    });
 
-    if (!form.customerName || !form.email || !form.password) {
-      alert("Customer Name, Admin Email and Password are required.");
-      setLoading(false);
-      return;
-    }
+    const createCustomerFn = useMemo(() => {
+        return httpsCallable(functions, "createCustomer");
+    }, []);
 
-    try {
-      await setDoc(doc(db, "users", form.email), {
-        address: form.address,
-        createdAt: serverTimestamp(),
-        customerId: form.email,
-        customerName: form.customerName,
-        email: form.email,
-        isAdmin: false,
-        name: form.name,
-        phone: form.phone,
-        role: ROLE.CUSTOMER,
-        type: ROLE.CUSTOMER,
-      });
-      await createUserWithEmailAndPassword(auth, form.email, form.password);
-    } catch (err: any) {
-      console.error(err);
-      if (err.code === "auth/email-already-in-use") {
-        alert("Customer email is already in use.");
-      } else {
-        // A catch-all for any other errors (auth, firestore, etc.)
-        alert("Error creating customer/admin: " + err.message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
 
-  if (!user) return <p>Please log in to access this page.</p>;
-  if (!isSuperAdmin) return <p>You do not have permission to add customers.</p>;
+        setForm((prev) => ({
+            ...prev,
+            [name]: value,
+        }));
+    };
+
+    const validate = () => {
+        if (!form.customerName.trim()) {
+            return "Customer name is required";
+        }
+
+        if (!form.adminEmail.trim()) {
+            return "Manager email is required";
+        }
+
+        if (!form.adminPassword.trim()) {
+            return "Manager password is required";
+        }
+
+        return null;
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (loading) return;
+
+        const validationError = validate();
+
+        if (validationError) {
+            setError(validationError);
+            return;
+        }
+
+        setError(null);
+        setLoading(true);
+
+        try {
+            await createCustomerFn({
+                customerName: form.customerName,
+                address: form.address,
+                phone: form.phone,
+
+                adminName: form.adminName,
+                adminEmail: form.adminEmail,
+                adminPassword: form.adminPassword,
+            });
+
+            setForm({
+                customerName: "",
+                address: "",
+                phone: "",
+                adminName: "",
+                adminEmail: "",
+                adminPassword: "",
+            });
+
+            setShowSuccess(true);
+        } catch (err: any) {
+            console.error(err);
+            setShowSuccess(false);
+            setError(err?.message || "Failed to create customer");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!user) return <p>Please log in.</p>;
+
+    if (!isSuperAdmin) return <p>You do not have permission.</p>;
 
     return (
         <div className="add-customer">
-            <h2>Add New Customer</h2>
+            <h2>Create Customer</h2>
+
+            {error && <div className="error">{error}</div>}
 
             <form onSubmit={handleSubmit}>
-                <input
-                    name="customerName"
-                    placeholder="Customer Name"
-                    value={form.customerName}
-                    onChange={handleChange}
-                    required
-                />
+                <div className="section">
+                    <h3>Customer</h3>
 
-                <input
-                    name="address"
-                    placeholder="Address"
-                    value={form.address}
-                    onChange={handleChange}
-                />
+                    <input
+                        name="customerName"
+                        placeholder="Customer Name"
+                        value={form.customerName}
+                        onChange={handleChange}
+                    />
 
-                <input
-                    name="phone"
-                    placeholder="Phone"
-                    value={form.phone}
-                    onChange={handleChange}
-                />
+                    <input
+                        name="address"
+                        placeholder="Address"
+                        value={form.address}
+                        onChange={handleChange}
+                    />
 
-                <h3>Admin Credentials</h3>
+                    <input
+                        name="phone"
+                        placeholder="Phone"
+                        value={form.phone}
+                        onChange={handleChange}
+                    />
+                </div>
 
-                <input
-                    name="name"
-                    placeholder="Admin Name"
-                    value={form.name}
-                    onChange={handleChange}
-                />
+                <div className="section">
+                    <h3>Manager</h3>
 
-                <input
-                    name="email"
-                    placeholder="Admin Email"
-                    type="email"
-                    value={form.email}
-                    onChange={handleChange}
-                    required
-                />
+                    <input
+                        name="adminName"
+                        placeholder="Manager Name"
+                        value={form.adminName}
+                        onChange={handleChange}
+                    />
 
-                <input
-                    name="password"
-                    placeholder="Admin Password"
-                    type="password"
-                    value={form.password}
-                    onChange={handleChange}
-                    required
-                />
+                    <input
+                        name="adminEmail"
+                        type="email"
+                        placeholder="Manager Email"
+                        value={form.adminEmail}
+                        onChange={handleChange}
+                    />
+
+                    <input
+                        name="adminPassword"
+                        type="password"
+                        placeholder="Manager Password"
+                        value={form.adminPassword}
+                        onChange={handleChange}
+                    />
+                </div>
 
                 <button type="submit" disabled={loading}>
                     {loading ? "Creating..." : "Create Customer"}
                 </button>
             </form>
+            {showSuccess && (
+                <div className="popup-overlay">
+                    <div className="popup">
+                        <div className="popup-icon">✓</div>
+
+                        <h3>Success</h3>
+
+                        <p>Customer created successfully!</p>
+
+                        <button onClick={() => setShowSuccess(false)}>
+                            OK
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
-
 }
