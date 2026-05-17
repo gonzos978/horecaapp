@@ -4,71 +4,272 @@ import * as admin from "firebase-admin";
 if (!admin.apps.length) {
     admin.initializeApp();
 }
+
 const db = admin.firestore();
 
-async function generateQuizFromText(text: string) {
-    // Placeholder for Gemini logic
-    return [
-        {
-            question: "Sample question from PDF",
-            options: ["A", "B", "C", "D"],
-            answer: "A",
-        },
-    ];
+/**
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
+
+async function getRequester(uid: string) {
+    const snap = await db.collection("users").doc(uid).get();
+
+    if (!snap.exists) return null;
+
+    return snap.data();
 }
 
-export const createQuizFromPdf = onCall({ cors: true },async (request) => {
-    // 1️⃣ Check Authentication (v2 style: request.auth)
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "User must be logged in");
-    }
+/**
+ * =========================================================
+ * CREATE CUSTOMER
+ * =========================================================
+ */
 
-    // 2️⃣ Access data (v2 style: request.data)
-    const { documentId } = request.data;
-    if (!documentId) {
-        throw new HttpsError("invalid-argument", "Missing documentId");
-    }
+export const createCustomer = onCall(
+    {
+        cors: true,
+        timeoutSeconds: 60,
+        memory: "512MiB",
+    },
 
-    try {
-        // 3️⃣ Lazy-load heavy PDF library
-        const pdf = await import("pdf-parse");
-        const pdfParse = (pdf as any).default || pdf;
 
-        // 4️⃣ Get document metadata from Firestore
-        const docSnap = await db.collection("documents").doc(documentId).get();
-        const docData = docSnap.data();
 
-        if (!docSnap.exists || !docData) {
-            throw new HttpsError("not-found", "Document not found");
+    async (request) => {
+        console.log("FUNCTION HIT");
+        // 1. Inline Auth Check (Fixes TS18048 completely)
+        if (!request.auth) {
+            throw new HttpsError(
+                "unauthenticated",
+                "User must be logged in"
+            );
+        }
+        console.log("createCustomer.....");
+        const uid = request.auth.uid;
+        const requester = await getRequester(uid);
+
+        if (!requester) {
+            throw new HttpsError(
+                "permission-denied",
+                "User not found"
+            );
+        }
+        console.log("ROLE: ", requester.type)
+        if (requester.type !== "SUPER_ADMIN") {
+            throw new HttpsError(
+                "permission-denied",
+                "Only super admins allowed"
+            );
         }
 
-        // 5️⃣ Download PDF (Node 22 native fetch)
-        const pdfResponse = await fetch(docData.fileUrl);
-        if (!pdfResponse.ok) throw new Error("Failed to download PDF");
+        // Added fallback empty object to protect against destructuring undefined
+        const {
+            customerName,
+            address,
+            phone,
+            adminName,
+            adminEmail,
+            adminPassword,
+        } = request.data || {};
 
-        const arrayBuffer = await pdfResponse.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        if (
+            !customerName ||
+            !adminEmail ||
+            !adminPassword
+        ) {
+            throw new HttpsError(
+                "invalid-argument",
+                "Missing required fields"
+            );
+        }
 
-        // 6️⃣ Extract text
-        const pdfData = await pdfParse(buffer);
-        const text = pdfData.text;
+        try {
+            /**
+             * 🔥 CUSTOMER ID
+             */
+            const customerRef = db.collection("customers").doc();
+            const customerId = customerRef.id;
 
-        // 7️⃣ Generate quiz
-        const quiz = await generateQuizFromText(text);
+            /**
+             * 👤 CREATE AUTH USER (MANAGER)
+             */
+            const userRecord = await admin.auth().createUser({
+                email: adminEmail,
+                password: adminPassword,
+                displayName: adminName || "",
+            });
 
-        // 8️⃣ Save to Firestore
-        await db.collection("quizzes").add({
-            documentId,
-            title: docData.fileName || "Untitled Quiz",
-            questions: quiz,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            isPublic: true,
-            userId: request.auth.uid
-        });
+            /**
+             * 🧠 MANAGER DATA
+             */
+            const managerData = {
+                uid: userRecord.uid,
+                customerId,
+                customerName,
+                name: adminName || "",
+                email: adminEmail,
+                role: "CUSTOMER",
+                isAdmin: true,
+                createdAt: new Date().toISOString(),
+            };
 
-        return { success: true };
-    } catch (error: any) {
-        console.error("Quiz Generation Error:", error);
-        throw new HttpsError("internal", error.message || "An error occurred");
+            /**
+             * ⚡ BATCH WRITE
+             */
+            const batch = db.batch();
+
+            batch.set(customerRef, {
+                id: customerId,
+                customerName,
+                address: address || "",
+                phone: phone || "",
+                status: "ACTIVE",
+                plan: "FREE",
+                createdAt: new Date().toISOString(),
+                createdBy: uid,
+            });
+
+            batch.set(
+                db
+                    .collection("customers")
+                    .doc(customerId)
+                    .collection("managers")
+                    .doc(userRecord.uid),
+                managerData
+            );
+
+            batch.set(
+                db.collection("users").doc(userRecord.uid),
+                managerData
+            );
+
+            await batch.commit();
+
+            return {
+                success: true,
+                customerId,
+                managerUid: userRecord.uid,
+            };
+
+        } catch (error: any) {
+            console.error("Create Customer Error:", error);
+
+            if (error.code === "auth/email-already-exists") {
+                throw new HttpsError(
+                    "already-exists",
+                    "Email already exists"
+                );
+            }
+
+            // Fallthrough security: Ensure custom errors aren't masked as 500s
+            if (error instanceof HttpsError) throw error;
+
+            throw new HttpsError(
+                "internal",
+                error?.message || "Failed to create customer"
+            );
+        }
     }
-});
+);
+
+/**
+ * =========================================================
+ * DELETE USER
+ * =========================================================
+ */
+
+export const deleteUser = onCall(
+    async (request) => {
+        // 1. Inline Auth Check (Fixes TS18048 completely)
+        if (!request.auth) {
+            throw new HttpsError(
+                "unauthenticated",
+                "User must be logged in"
+            );
+        }
+
+        const uid = request.auth.uid;
+        const { uid: targetUid, customerId } = request.data || {};
+
+        if (!targetUid) {
+            throw new HttpsError(
+                "invalid-argument",
+                "Target user UID is required"
+            );
+        }
+
+        /**
+         * ⚠️ PREVENT SELF DELETE (Moved outside try-catch)
+         */
+        if (targetUid === uid) {
+            throw new HttpsError(
+                "failed-precondition",
+                "You cannot delete yourself"
+            );
+        }
+
+        const requester = await getRequester(uid);
+
+        if (!requester) {
+            throw new HttpsError(
+                "permission-denied",
+                "User not found"
+            );
+        }
+
+        const isSuperAdmin = requester.type === "SUPER_ADMIN";
+        const isCustomerAdmin =
+            requester.customerId === customerId &&
+            requester.isAdmin === true;
+
+        if (!isSuperAdmin && !isCustomerAdmin) {
+            throw new HttpsError(
+                "permission-denied",
+                "Not allowed"
+            );
+        }
+
+        try {
+            /**
+             * 🧨 DELETE AUTH USER
+             */
+            await admin.auth().deleteUser(targetUid);
+
+            /**
+             * ⚡ BATCH DELETE FIRESTORE
+             */
+            const batch = db.batch();
+
+            batch.delete(
+                db.collection("users").doc(targetUid)
+            );
+
+            if (customerId) {
+                batch.delete(
+                    db
+                        .collection("customers")
+                        .doc(customerId)
+                        .collection("managers")
+                        .doc(targetUid)
+                );
+            }
+
+            await batch.commit();
+
+            return {
+                success: true,
+            };
+
+        } catch (error: any) {
+            console.error("Delete User Error:", error);
+
+            if (error instanceof HttpsError) throw error;
+
+            throw new HttpsError(
+                "internal",
+                error?.message || "Failed to delete user"
+            );
+        }
+    }
+);

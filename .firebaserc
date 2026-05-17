@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "horecaapp-e16cf"
-  }
+    "default": "horecaapp-e16cf",
+    "staging": "horecaapp-e16cf"
+  },
+  "targets": {},
+  "etags": {}
 }
