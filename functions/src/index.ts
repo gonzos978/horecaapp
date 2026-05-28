@@ -66,6 +66,7 @@ export const createCustomer = onCall(
         // Added fallback empty object to protect against destructuring undefined
         const {
             customerName,
+            businessType,
             address,
             phone,
             adminName,
@@ -107,6 +108,7 @@ export const createCustomer = onCall(
                 uid: userRecord.uid,
                 customerId,
                 customerName,
+                businessType,
                 name: adminName || "",
                 email: adminEmail,
                 role: "CUSTOMER",
@@ -122,6 +124,7 @@ export const createCustomer = onCall(
             batch.set(customerRef, {
                 id: customerId,
                 customerName,
+                businessType,
                 address: address || "",
                 phone: phone || "",
                 status: "ACTIVE",
@@ -172,6 +175,55 @@ export const createCustomer = onCall(
         }
     }
 );
+
+/**
+ * DELETE CUSTOMER
+ */
+export const deleteCustomerUser = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Login required");
+    }
+
+    const uid = request.auth.uid;
+    const requester = await getRequester(uid);
+
+    if (!requester || requester.type !== "SUPER_ADMIN") {
+        throw new HttpsError("permission-denied", "Only super admin allowed");
+    }
+
+    const { userId, customerId } = request.data;
+
+    if (!userId) {
+        throw new HttpsError("invalid-argument", "Missing userId");
+    }
+
+    try {
+        const batch = db.batch();
+
+        // 1️⃣ delete user document
+        batch.delete(db.collection("users").doc(userId));
+
+        // 2️⃣ delete customer document
+        if (customerId) {
+            batch.delete(db.collection("customers").doc(customerId));
+        }
+
+        await batch.commit();
+
+        // 3️⃣ delete auth user (IMPORTANT)
+        await admin.auth().deleteUser(userId);
+
+        return { success: true };
+
+    } catch (err: any) {
+        console.error("DELETE ERROR:", err);
+
+        throw new HttpsError(
+            "internal",
+            err?.message || "Failed to delete customer"
+        );
+    }
+});
 
 /**
  * =========================================================

@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import {useEffect, useMemo, useState} from "react";
+import {useNavigate, useParams} from "react-router-dom";
+import {doc, getDoc, updateDoc} from "firebase/firestore";
 
-import { getAuth } from "firebase/auth";
-import { db } from "../../fb/firebase";
+import {getAuth} from "firebase/auth";
+import {db, functions} from "../../fb/firebase";
+import {httpsCallable} from "firebase/functions";
+import toast from "react-hot-toast";
 
 export default function EditCustomer() {
-    const { id } = useParams();
+    const {id} = useParams();
     // id = USER id (from users collection)
 
     const auth = getAuth();
@@ -27,6 +29,72 @@ export default function EditCustomer() {
     const [phone, setPhone] = useState("");
     const [address, setAddress] = useState("");
     const [businessType, setBusinessType] = useState("");
+
+    const deleteCustomerFn =
+
+        useMemo(() => {
+            return httpsCallable(functions, "deleteCustomerUser");
+        }, []);
+
+
+    const handleDelete = async () => {
+        if (!customerUserId) return;
+
+        const confirmDelete = await new Promise<boolean>((resolve) => {
+            toast(
+                (t) => (
+                    <div className="flex flex-col gap-3">
+                        <p className="text-sm font-medium">
+                            Delete this customer?
+                        </p>
+
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                className="px-3 py-1 rounded bg-slate-200"
+                                onClick={() => {
+                                    toast.dismiss(t.id);
+                                    resolve(false);
+                                }}
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                className="px-3 py-1 rounded bg-red-600 text-white"
+                                onClick={() => {
+                                    toast.dismiss(t.id);
+                                    resolve(true);
+                                }}
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                ),
+                { duration: Infinity }
+            );
+        });
+        if (!confirmDelete) return;
+
+        try {
+            setSaving(true);
+
+            await deleteCustomerFn({
+                userId: customerUserId,
+                customerId: customerId,
+            });
+
+            toast.success("Customer updated successfully 🎉");
+
+            navigate("/admin/users");
+
+        } catch (err) {
+            console.error("DELETE ERROR:", err);
+            toast.success("Customer updated successfully 🎉");
+        } finally {
+            setSaving(false);
+        }
+    };
 
     // ---------------- LOAD ----------------
     useEffect(() => {
@@ -109,12 +177,12 @@ export default function EditCustomer() {
                 customerId,
             });
 
-            alert("Customer updated successfully");
+            toast.success("Customer updated successfully 🎉");
             navigate("/admin/users");
 
         } catch (err) {
             console.error("SAVE ERROR:", err);
-            alert("Failed to update customer");
+            toast.error("Failed to update customer");
         } finally {
             setSaving(false);
         }
@@ -130,12 +198,14 @@ export default function EditCustomer() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 p-6 flex items-center justify-center">
+        <div
+            className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 p-6 flex items-center justify-center">
 
             <div className="w-full max-w-3xl">
 
                 {/* CARD */}
-                <div className="bg-white/80 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl overflow-hidden">
+                <div
+                    className="bg-white/80 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl overflow-hidden">
 
                     {/* HEADER */}
                     <div className="bg-gradient-to-r from-slate-900 to-slate-700 p-8 text-white">
@@ -227,7 +297,12 @@ export default function EditCustomer() {
                             >
                                 {saving ? "Saving..." : "Save Changes"}
                             </button>
-
+                            <button
+                                onClick={handleDelete}
+                                className="px-6 py-3 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition"
+                            >
+                                Delete Customer
+                            </button>
                         </div>
 
                     </div>

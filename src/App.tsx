@@ -39,7 +39,7 @@ import { Menu as MenuIcon } from "lucide-react";
 import AdminEditChecklist from "./pages/admin/AdminEditChecklist.tsx";
 import ChecklistListView from "./pages/admin/ChecklistListView.tsx";
 import AdminAddChecklist from "./pages/admin/AddChecklists.tsx";
-
+import { Toaster } from "react-hot-toast";
 
 // -------------------- ROUTE GUARDS --------------------
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -118,7 +118,18 @@ function CustomerMainApp() {
 export default function App() {
     return (
         <AuthProvider>
+
             <BrowserRouter>
+                <Toaster
+                    position="top-right"
+                    toastOptions={{
+                        style: {
+                            borderRadius: "12px",
+                            padding: "12px 16px",
+                            fontSize: "14px",
+                        },
+                    }}
+                />
                 <Routes>
                     {/* PUBLIC LOGIN */}
                     <Route path="/admin/login" element={<AdminLogin />} />
