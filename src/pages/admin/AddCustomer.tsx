@@ -15,12 +15,12 @@ export default function AddCustomer() {
 
     const [form, setForm] = useState({
         customerName: "",
+        businessType: "",
         address: "",
         phone: "",
 
-        adminName: "",
-        adminEmail: "",
-        adminPassword: "",
+        loginEmail: "",
+        loginPassword: "",
     });
 
     const createCustomerFn = useMemo(() => {
@@ -37,18 +37,10 @@ export default function AddCustomer() {
     };
 
     const validate = () => {
-        if (!form.customerName.trim()) {
-            return "Customer name is required";
-        }
-
-        if (!form.adminEmail.trim()) {
-            return "Manager email is required";
-        }
-
-        if (!form.adminPassword.trim()) {
-            return "Manager password is required";
-        }
-
+        if (!form.customerName.trim()) return "Customer name is required";
+        if (!form.businessType.trim()) return "Business type is required";
+        if (!form.loginEmail.trim()) return "Login email is required";
+        if (!form.loginPassword.trim()) return "Login password is required";
         return null;
     };
 
@@ -70,26 +62,26 @@ export default function AddCustomer() {
         try {
             await createCustomerFn({
                 customerName: form.customerName,
+                businessType: form.businessType,
                 address: form.address,
                 phone: form.phone,
 
-                adminName: form.adminName,
-                adminEmail: form.adminEmail,
-                adminPassword: form.adminPassword,
+                adminEmail: form.loginEmail,
+                adminPassword: form.loginPassword,
             });
 
             setForm({
                 customerName: "",
+                businessType: "",
                 address: "",
                 phone: "",
-                adminName: "",
-                adminEmail: "",
-                adminPassword: "",
+                loginEmail: "",
+                loginPassword: "",
             });
 
             setShowSuccess(true);
         } catch (err: any) {
-            console.error(err);
+            console.log(err);
             setShowSuccess(false);
             setError(err?.message || "Failed to create customer");
         } finally {
@@ -132,30 +124,37 @@ export default function AddCustomer() {
                         onChange={handleChange}
                     />
                 </div>
+                <select
+                    name="businessType"
+                    value={form.businessType}
+                    onChange={(e) =>
+                        setForm(prev => ({ ...prev, businessType: e.target.value }))
+                    }
+                >
+                    <option value="">Select business type</option>
+                    <option value="restaurant">Restaurant</option>
+                    <option value="cafe">Café</option>
+                    <option value="bar">Bar</option>
+                    <option value="hotel">Hotel</option>
+                    <option value="other">Other</option>
+                </select>
 
                 <div className="section">
-                    <h3>Manager</h3>
+                    <h3>Login Credentials</h3>
 
                     <input
-                        name="adminName"
-                        placeholder="Manager Name"
-                        value={form.adminName}
-                        onChange={handleChange}
-                    />
-
-                    <input
-                        name="adminEmail"
+                        name="loginEmail"
                         type="email"
-                        placeholder="Manager Email"
-                        value={form.adminEmail}
+                        placeholder="Login Email"
+                        value={form.loginEmail}
                         onChange={handleChange}
                     />
 
                     <input
-                        name="adminPassword"
+                        name="loginPassword"
                         type="password"
-                        placeholder="Manager Password"
-                        value={form.adminPassword}
+                        placeholder="Login Password"
+                        value={form.loginPassword}
                         onChange={handleChange}
                     />
                 </div>

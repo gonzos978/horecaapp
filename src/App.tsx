@@ -12,6 +12,7 @@ import AddCustomer from "./pages/admin/AddCustomer";
 import CustomersList from "./pages/admin/CustomersList";
 import AdminSettings from "./pages/admin/Settings";
 import UploadDocuments from "./pages/admin/UploadDocuments";
+import EditCustomer from "./pages/admin/EditCustomer";
 
 // -------------------- CUSTOMER APP --------------------
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -141,6 +142,7 @@ export default function App() {
                         <Route path="add-checklist" element={<AdminAddChecklist />} />
                         <Route path="view-checklist" element={<ChecklistListView />} />
                         <Route path="edit-checklist/:id" element={<AdminEditChecklist />} />
+                        <Route path="edit-customer/:id" element={<EditCustomer />} />
 
 
                     </Route>

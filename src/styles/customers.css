@@ -70,3 +70,19 @@
     font-weight: 500;
     color: #2563eb;
 }
+.customer-actions {
+    margin-top: 12px;
+}
+
+.edit-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    background: #111827;
+    color: white;
+    cursor: pointer;
+}
+
+.edit-btn:hover {
+    opacity: 0.9;
+}
