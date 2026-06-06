@@ -37,6 +37,9 @@ export default function AdminSidebar() {
           <NavLink to="/admin/view-checklist" style={linkStyle}>
               View checklist
           </NavLink>
+          <NavLink to="/admin/create-test" style={linkStyle}>
+              Create Test
+          </NavLink>
         <NavLink to="/admin/settings" style={linkStyle}>
           Settings
         </NavLink>

@@ -1,11 +1,18 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import {onObjectFinalized} from "firebase-functions/storage";
+import {getStorage} from "firebase-admin/storage";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import {getFirestore} from "firebase-admin/firestore";
+
 
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 
 const db = admin.firestore();
+
+const genAI = new GoogleGenerativeAI("AIzaSyBm5ioCwKtsY5AghnXTwlWwsNgaK94LM7s");
 
 /**
  * =========================================================
@@ -20,6 +27,7 @@ async function getRequester(uid: string) {
 
     return snap.data();
 }
+
 
 /**
  * =========================================================
@@ -325,3 +333,191 @@ export const deleteUser = onCall(
         }
     }
 );
+
+/**
+ * =========================================================
+ * GENERATE QUESTIONS (callable)
+ * Downloads a training PDF from Storage, extracts its text,
+ * and asks Gemini for multiple-choice questions. Returns the
+ * questions to the caller (CreateTest previews before saving).
+ * =========================================================
+ */
+
+export const generateQuestions = onCall(
+    {
+        cors: true,
+        timeoutSeconds: 120,
+        memory: "1GiB",
+    },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError("unauthenticated", "User must be logged in");
+        }
+
+        const { role, roleContext, pdfPath, count } = request.data || {};
+
+        if (!role || !pdfPath) {
+            throw new HttpsError(
+                "invalid-argument",
+                "role and pdfPath are required"
+            );
+        }
+
+        const numQuestions = Math.min(Math.max(Number(count) || 5, 1), 50);
+
+        try {
+            // 1. Download PDF from Storage (admin SDK, default bucket)
+            console.log(`generateQuestions: downloading ${pdfPath}`);
+            const bucket = getStorage().bucket();
+            const [buffer] = await bucket.file(pdfPath).download();
+            console.log(`generateQuestions: downloaded ${buffer.length} bytes`);
+
+            // 2. Extract text
+            console.log("generateQuestions: extracting text from PDF");
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const pdfMod = require("pdf-parse");
+            const pdfParse = pdfMod.default ?? pdfMod;
+            const data = await pdfParse(buffer);
+            const text = (data.text || "").trim();
+            console.log(`generateQuestions: extracted ${text.length} chars`);
+
+            if (!text) {
+                throw new HttpsError(
+                    "failed-precondition",
+                    "Could not extract any text from the PDF"
+                );
+            }
+
+            // 3. Generate questions with Gemini (JSON response)
+            console.log(`generateQuestions: calling Gemini for ${numQuestions} questions`);
+            const model = genAI.getGenerativeModel({
+                model: "gemini-1.5-flash",
+                generationConfig: { responseMimeType: "application/json" },
+            });
+
+            const prompt = `You are creating a multiple-choice training test for a hospitality "${role}" role.
+Role focus: ${roleContext || role}.
+Based ONLY on the training document text below, write ${numQuestions} multiple-choice questions.
+Each question must have exactly 4 options, exactly one correct answer, and a short explanation.
+Return ONLY valid JSON in this exact shape:
+{"questions":[{"question":"...","options":["...","...","...","..."],"correct":0,"explanation":"..."}]}
+Where "correct" is the zero-based index (0-3) of the correct option.
+
+Training document:
+"""
+${text.slice(0, 30000)}
+"""`;
+
+            const result = await model.generateContent(prompt);
+            const raw = result.response.text();
+
+            let parsed: any;
+            try {
+                parsed = JSON.parse(raw);
+            } catch {
+                // Strip markdown fences if the model wrapped the JSON
+                const cleaned = raw.replace(/```json|```/g, "").trim();
+                parsed = JSON.parse(cleaned);
+            }
+
+            const rawQuestions = Array.isArray(parsed) ? parsed : parsed.questions;
+
+            if (!Array.isArray(rawQuestions)) {
+                throw new HttpsError(
+                    "internal",
+                    "AI returned an unexpected format"
+                );
+            }
+
+            // Validate each question against the expected schema
+            const isValidQuestion = (q: any): boolean =>
+                q !== null &&
+                typeof q === "object" &&
+                typeof q.question === "string" && q.question.trim() !== "" &&
+                Array.isArray(q.options) &&
+                q.options.length === 4 &&
+                q.options.every((o: any) => typeof o === "string") &&
+                typeof q.correct === "number" &&
+                Number.isInteger(q.correct) &&
+                q.correct >= 0 && q.correct <= 3 &&
+                typeof q.explanation === "string";
+
+            const questions = rawQuestions.filter(isValidQuestion);
+
+            if (questions.length === 0) {
+                throw new HttpsError(
+                    "internal",
+                    "AI returned no valid questions — try again"
+                );
+            }
+
+            if (questions.length < rawQuestions.length) {
+                console.warn(
+                    `generateQuestions: dropped ${rawQuestions.length - questions.length} malformed question(s)`
+                );
+            }
+
+            return { questions };
+        } catch (error: any) {
+            console.error("generateQuestions error:", error);
+
+            if (error instanceof HttpsError) throw error;
+
+            // Surface the real message so the client can display it
+            throw new HttpsError(
+                "internal",
+                `generateQuestions failed: ${error?.message ?? String(error)}`
+            );
+        }
+    }
+);
+
+/**
+ * CREATE TEST
+ */
+
+export const generateTestFromPDF = onObjectFinalized({
+    cpu: 2, // AI tasks need more power
+    memory: "1GiB"
+}, async (event) => {
+    const filePath = event.data.name; // e.g., "pdfs/lesson1.pdf"
+
+    // 1. Only process files in the 'tests' folder
+    if (!filePath.startsWith("tests/")) return;
+
+    const bucket = getStorage().bucket(event.data.bucket);
+    const file = bucket.file(filePath);
+
+    try {
+        // 2. Download PDF into memory
+        const [buffer] = await file.download();
+
+        // 3. Extract Text
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const pdf = require("pdf-parse");
+        const data = await pdf(buffer);
+        const extractedText = data.text;
+
+        // 4. Send to AI Agent
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = `Based on the following text, create a 5-question multiple choice test.
+                        Return the result in valid JSON format:
+                        [{ "question": "...", "options": ["A", "B", "C"], "answer": "A" }]
+                        Text: ${extractedText}`;
+
+        const result = await model.generateContent(prompt);
+        const testJson = JSON.parse(result.response.text());
+
+        // 5. Save to Firestore
+        await getFirestore().collection("generated_tests").add({
+            sourceFile: filePath,
+            questions: testJson,
+            createdAt: new Date().toISOString()
+        });
+
+        console.log("Test generated successfully!");
+
+    } catch (error) {
+        console.error("AI Generation Error:", error);
+    }
+});

@@ -14,6 +14,7 @@ import {
     ListTodo,
 } from "lucide-react";
 import {useLanguage} from "../contexts/LanguageContext";
+import {useAuth} from "../contexts/AuthContext";
 
 interface NavigationProps {
     currentPage: string;
@@ -29,6 +30,8 @@ export default function Navigation({
                                        onClose,
                                    }: NavigationProps) {
     const {t} = useLanguage();
+    const {currentUser} = useAuth();
+    const isWorker = currentUser?.role?.toLowerCase() === "worker";
 
     const menuItems = [
         {id: "home", icon: LayoutDashboard, label: t("nav.dashboard")},
@@ -89,6 +92,7 @@ export default function Navigation({
                     );
                 })}
 
+                {isWorker && (
                 <div className="pt-4 mt-4 border-t border-slate-200">
                     <p className="text-xs font-semibold text-slate-500 uppercase px-4 mb-2">
                         PWA Ekrani
@@ -113,6 +117,7 @@ export default function Navigation({
                         );
                     })}
                 </div>
+                )}
             </nav>
         </aside>
     );

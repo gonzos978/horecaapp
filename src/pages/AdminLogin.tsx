@@ -48,7 +48,7 @@ export default function AdminLogin() {
       // 3. Uzimamo prvi dokument koji matcha
       const docSnap = querySnapshot.docs[0];
       const data = docSnap.data();
-
+      console.log("User data:", data.role);
       // 4. Navigacija na osnovu role
       if (data.role === ROLE.ADMIN) {
         navigate("/admin/dashboard", { replace: true });

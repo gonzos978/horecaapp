@@ -40,6 +40,7 @@ import AdminEditChecklist from "./pages/admin/AdminEditChecklist.tsx";
 import ChecklistListView from "./pages/admin/ChecklistListView.tsx";
 import AdminAddChecklist from "./pages/admin/AddChecklists.tsx";
 import { Toaster } from "react-hot-toast";
+import CreateTest from "./pages/admin/CreateTest.tsx";
 
 // -------------------- ROUTE GUARDS --------------------
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -152,6 +153,7 @@ export default function App() {
                         <Route path="documents" element={<UploadDocuments />} />
                         <Route path="add-checklist" element={<AdminAddChecklist />} />
                         <Route path="view-checklist" element={<ChecklistListView />} />
+                        <Route path="create-test" element={<CreateTest />} />
                         <Route path="edit-checklist/:id" element={<AdminEditChecklist />} />
                         <Route path="edit-customer/:id" element={<EditCustomer />} />
 

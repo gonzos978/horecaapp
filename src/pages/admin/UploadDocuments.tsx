@@ -7,13 +7,31 @@ import {
     serverTimestamp,
     deleteDoc,
     doc,
-    query,
+    query, where,
 } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
+
+import {
+    ref,
+    uploadBytesResumable,
+    getDownloadURL,
+    deleteObject,
+} from "firebase/storage";
+
+import {
+    FileText,
+    Upload,
+    Trash2,
+    Sparkles,
+    ExternalLink,
+    Loader2,
+    ShieldCheck,
+} from "lucide-react";
+
 import { db, storage } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
+import { getFunctions, httpsCallable } from "firebase/functions";
+
 import "./../../styles/UploadDocuments.css";
-import { getFunctions, httpsCallable } from "firebase/functions"; // CORRECT for frontend
 
 export default function UploadDocuments() {
     const { user, isSuperAdmin } = useAuth();
@@ -25,16 +43,20 @@ export default function UploadDocuments() {
     const [documents, setDocuments] = useState<any[]>([]);
     const [listLoading, setListLoading] = useState(true);
 
-    if (!user) return <p>Please log in.</p>;
-    if (!isSuperAdmin) return <p>You do not have permission.</p>;
+    const functions = getFunctions();
 
-    // 🔹 Firestore listener for this user's documents
+    // =========================
+    // FIRESTORE LISTENER
+    // =========================
     useEffect(() => {
         if (!user) return;
 
-        console.log(user.uid)
+        console.log(user);
+
+        // 🔥 ONLY CURRENT USER DOCUMENTS
         const q = query(
             collection(db, "documents"),
+            where("ownerId", "==", user.uid),
             orderBy("createdAt", "desc")
         );
 
@@ -44,120 +66,442 @@ export default function UploadDocuments() {
                 const docs = snap.docs.map((d) => ({
                     id: d.id,
                     ...d.data(),
-                    createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate() : new Date()
+                    createdAt:
+                        d.data().createdAt?.toDate?.() ??
+                        new Date(),
                 }));
+
                 setDocuments(docs);
                 setListLoading(false);
             },
-            (err) => console.error("Firestore error:", err)
+            (err) => {
+                console.log("Firestore error:", err);
+                setListLoading(false);
+            }
         );
 
         return () => unsub();
     }, [user]);
 
-    // 🔹 Upload document
+    // =========================
+    // UPLOAD FILE
+    // =========================
     const handleUpload = async () => {
-        if (!file) return alert("Please select a file");
+        if (!file) {
+            alert("Please select a file");
+            return;
+        }
 
-        setLoading(true);
-        const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
-        const uploadTask = uploadBytesResumable(storageRef, file);
-
-        uploadTask.on(
-            "state_changed",
-            (snapshot) => setProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
-            (err) => {
-                console.error(err);
-                alert("Upload failed");
-                setLoading(false);
-            },
-            async () => {
-                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-
-                // @ts-ignore
-                const docRef = await addDoc(collection(db, "documents"), {
-                    fileName: file.name,
-                    fileUrl: downloadURL,
-                    contentType: file.type,
-                    uploadedBy: user.email,
-                    ownerId: user.uid,
-                    createdAt: serverTimestamp()
-                });
-
-                setFile(null);
-                setProgress(0);
-                setLoading(false);
-            }
-        );
-    };
-
-    // 🔹 Delete document
-    const handleDelete = async (docId: string, fileUrl: string) => {
-        if (!window.confirm("Are you sure?")) return;
-
-        setDocuments((prev) => prev.filter((d) => d.id !== docId)); // optimistic UI
+        if (!user) return;
 
         try {
+            setLoading(true);
+            setProgress(0);
+
+            const storagePath = `documents/${user.uid}/${Date.now()}_${file.name}`;
+
+            const storageRef = ref(storage, storagePath);
+
+            const uploadTask = uploadBytesResumable(
+                storageRef,
+                file
+            );
+
+            uploadTask.on(
+                "state_changed",
+
+                (snapshot) => {
+                    const percent = Math.round(
+                        (snapshot.bytesTransferred /
+                            snapshot.totalBytes) *
+                        100
+                    );
+
+                    setProgress(percent);
+                },
+
+                (err) => {
+                    console.error("UPLOAD ERROR:", err);
+                    alert("Upload failed");
+                    setLoading(false);
+                },
+
+                async () => {
+                    const downloadURL =
+                        await getDownloadURL(
+                            uploadTask.snapshot.ref
+                        );
+
+                    await addDoc(
+                        collection(db, "documents"),
+                        {
+                            fileName: file.name,
+                            fileUrl: downloadURL,
+                            filePath: storagePath,
+                            contentType: file.type,
+                            uploadedBy: user.email,
+                            ownerId: user.uid,
+                            createdAt: serverTimestamp(),
+                        }
+                    );
+
+                    setFile(null);
+                    setProgress(0);
+                    setLoading(false);
+                }
+            );
+        } catch (err) {
+            console.error("UPLOAD ERROR:", err);
+            setLoading(false);
+        }
+    };
+
+    // =========================
+    // DELETE DOCUMENT
+    // =========================
+    const handleDelete = async (
+        docId: string,
+        filePath?: string
+    ) => {
+        const confirmed = window.confirm(
+            "Delete this document?"
+        );
+
+        if (!confirmed) return;
+
+        try {
+            // optimistic UI
+            setDocuments((prev) =>
+                prev.filter((d) => d.id !== docId)
+            );
+
             await deleteDoc(doc(db, "documents", docId));
 
-            const path = fileUrl.split("/o/")[1].split("?")[0];
-            await deleteObject(ref(storage, decodeURIComponent(path)));
+            if (filePath) {
+                await deleteObject(ref(storage, filePath));
+            }
         } catch (err) {
-            console.error("Delete failed:", err);
+            console.error("DELETE ERROR:", err);
         }
     };
 
-    const handleCreateQuiz = async (docId: string) => {
-        const functions = getFunctions();
-        // Create a reference to your function
-        const createQuiz = httpsCallable(functions, 'createQuizFromPdf');
+    // =========================
+    // CREATE QUIZ
+    // =========================
+    const handleCreateQuiz = async (
+        docId: string
+    ) => {
+        const createQuiz = httpsCallable(
+            functions,
+            "createQuizFromPdf"
+        );
 
         try {
-            // Just call it like a regular function!
-            // No need for URLs, JSON.stringify, or headers.
-            const result = await createQuiz({ documentId: docId });
+            const result = await createQuiz({
+                documentId: docId,
+            });
 
-            console.log("Success:", result.data);
+            console.log("Quiz created:", result.data);
+
             alert("Quiz created successfully!");
         } catch (err: any) {
-            // Firebase automatically parses the HttpsError you threw in the backend
-            console.error("Error code:", err.code);
-            alert(err.message || "Failed to create quiz");
+            console.error("Quiz error:", err);
+
+            alert(
+                err.message ||
+                "Failed to create quiz"
+            );
         }
     };
 
+    // =========================
+    // GUARDS
+    // =========================
+    if (!user) {
+        return (
+            <div className="min-h-screen flex items-center justify-center text-slate-600">
+                Please log in.
+            </div>
+        );
+    }
+
+    if (!isSuperAdmin) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="bg-white border border-red-200 shadow-xl rounded-3xl p-8 text-center max-w-md">
+                    <ShieldCheck
+                        size={48}
+                        className="mx-auto text-red-500 mb-4"
+                    />
+
+                    <h2 className="text-2xl font-bold text-slate-800">
+                        Access Denied
+                    </h2>
+
+                    <p className="text-slate-500 mt-2">
+                        You do not have permission
+                        to access this page.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="documents-cards-row">
-            {documents.map((doc) => (
-                <div key={doc.id} className="document-card">
-                    <div className="card-header">
-                        <strong>{doc.fileName}</strong>
-                        <span>Uploaded by {doc.uploadedBy}</span>
-                    </div>
-                    <div className="card-footer">
-                        <small>{doc.createdAt.toLocaleString()}</small>
-                        <div className="card-actions">
-                            <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">Open</a>
+        <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-200 p-6">
 
-                            {/* Create Quiz button */}
-                            <button
-                                className="quiz-btn"
-                                onClick={() => handleCreateQuiz(doc.id)}
-                            >
-                                Create Quiz
-                            </button>
+            <div className="max-w-7xl mx-auto">
 
-                            <button
-                                className="delete-btn"
-                                onClick={() => handleDelete(doc.id, doc.fileUrl)}
-                            >
-                                Delete
-                            </button>
+                {/* HEADER */}
+                <div className="mb-8">
+                    <h1 className="text-4xl font-black text-slate-900">
+                        Documents Center
+                    </h1>
+
+                    <p className="text-slate-500 mt-2">
+                        Upload PDF documents and
+                        generate quizzes automatically.
+                    </p>
+                </div>
+
+                {/* UPLOAD CARD */}
+                <div className="bg-white/80 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl p-8 mb-10">
+
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center">
+                            <Upload size={22} />
+                        </div>
+
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-800">
+                                Upload Document
+                            </h2>
+
+                            <p className="text-slate-500 text-sm">
+                                PDF, DOCX or text files
+                            </p>
                         </div>
                     </div>
-                </div>
-            ))}
-        </div>
 
+                    <div className="grid md:grid-cols-[1fr_auto] gap-4 items-center">
+
+                        <label className="flex items-center gap-4 border-2 border-dashed border-slate-300 rounded-2xl px-5 py-4 bg-slate-50 hover:bg-slate-100 transition cursor-pointer">
+
+                            <FileText
+                                size={24}
+                                className="text-slate-500"
+                            />
+
+                            <div className="flex-1">
+                                <p className="font-medium text-slate-700">
+                                    {file
+                                        ? file.name
+                                        : "Choose a file"}
+                                </p>
+
+                                <p className="text-sm text-slate-400">
+                                    Click to browse files
+                                </p>
+                            </div>
+
+                            <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) =>
+                                    setFile(
+                                        e.target
+                                            .files?.[0] ||
+                                        null
+                                    )
+                                }
+                            />
+                        </label>
+
+                        <button
+                            onClick={handleUpload}
+                            disabled={loading}
+                            className="px-8 py-4 rounded-2xl bg-slate-900 text-white font-semibold shadow-lg hover:scale-[1.02] active:scale-[0.98] transition disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {loading ? (
+                                <>
+                                    <Loader2
+                                        size={18}
+                                        className="animate-spin"
+                                    />
+                                    Uploading...
+                                </>
+                            ) : (
+                                <>
+                                    <Upload size={18} />
+                                    Upload
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* PROGRESS */}
+                    {loading && (
+                        <div className="mt-6">
+
+                            <div className="flex justify-between text-sm mb-2">
+                                <span className="text-slate-600">
+                                    Uploading...
+                                </span>
+
+                                <span className="font-semibold text-slate-800">
+                                    {progress}%
+                                </span>
+                            </div>
+
+                            <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-slate-900 transition-all duration-300"
+                                    style={{
+                                        width: `${progress}%`,
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* DOCUMENTS */}
+                <div>
+
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold text-slate-800">
+                            Uploaded Documents
+                        </h2>
+
+                        <div className="text-sm text-slate-500">
+                            {documents.length} document(s)
+                        </div>
+                    </div>
+
+                    {listLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2
+                                size={40}
+                                className="animate-spin text-slate-500"
+                            />
+                        </div>
+                    ) : documents.length === 0 ? (
+                        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-lg">
+                            <FileText
+                                size={48}
+                                className="mx-auto text-slate-400 mb-4"
+                            />
+
+                            <h3 className="text-xl font-bold text-slate-700">
+                                No documents uploaded
+                            </h3>
+
+                            <p className="text-slate-500 mt-2">
+                                Upload your first file to
+                                begin creating quizzes.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+
+                            {documents.map((docItem) => (
+                                <div
+                                    key={docItem.id}
+                                    className="bg-white/80 backdrop-blur-xl border border-slate-200 shadow-xl rounded-3xl p-6 hover:shadow-2xl hover:-translate-y-1 transition-all"
+                                >
+
+                                    {/* TOP */}
+                                    <div className="flex items-start justify-between gap-4 mb-5">
+
+                                        <div className="flex items-start gap-4 min-w-0">
+
+                                            <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                                                <FileText
+                                                    size={24}
+                                                />
+                                            </div>
+
+                                            <div className="min-w-0">
+                                                <h3 className="font-bold text-slate-800 truncate">
+                                                    {
+                                                        docItem.fileName
+                                                    }
+                                                </h3>
+
+                                                <p className="text-sm text-slate-500 mt-1 truncate">
+                                                    Uploaded by{" "}
+                                                    {
+                                                        docItem.uploadedBy
+                                                    }
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* DATE */}
+                                    <div className="bg-slate-100 rounded-2xl px-4 py-3 mb-6">
+                                        <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">
+                                            Created
+                                        </p>
+
+                                        <p className="text-sm font-medium text-slate-700">
+                                            {docItem.createdAt.toLocaleString()}
+                                        </p>
+                                    </div>
+
+                                    {/* ACTIONS */}
+                                    <div className="flex flex-wrap gap-3">
+
+                                        <a
+                                            href={
+                                                docItem.fileUrl
+                                            }
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex-1 min-w-[100px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-slate-300 text-slate-700 hover:bg-slate-100 transition font-medium"
+                                        >
+                                            <ExternalLink
+                                                size={16}
+                                            />
+                                            Open
+                                        </a>
+
+                                        <button
+                                            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition shadow-lg"
+                                            onClick={() =>
+                                                handleCreateQuiz(
+                                                    docItem.id
+                                                )
+                                            }
+                                        >
+                                            <Sparkles
+                                                size={16}
+                                            />
+                                            Create Quiz
+                                        </button>
+
+                                        <button
+                                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition font-semibold"
+                                            onClick={() =>
+                                                handleDelete(
+                                                    docItem.id,
+                                                    docItem.filePath
+                                                )
+                                            }
+                                        >
+                                            <Trash2
+                                                size={16}
+                                            />
+                                            Delete
+                                        </button>
+
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }

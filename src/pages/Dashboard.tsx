@@ -7,6 +7,11 @@ import {
     Users as UsersIcon,
     Star,
     ShoppingCart,
+    ListTodo,
+    Smartphone,
+    ChefHat,
+    Home as HomeIcon,
+    ArrowRight,
 } from "lucide-react";
 import Header from "../components/Header";
 import AddUserModal from "../components/AddUserModal";
@@ -72,7 +77,8 @@ export default function Dashboard() {
     });
 
     const isCustomerOrManager =
-        currentUser?.role === ROLE.CUSTOMER || currentUser?.role === ROLE.MANAGER;
+        currentUser?.role?.toLowerCase() === ROLE.CUSTOMER ||
+        currentUser?.role?.toLowerCase() === ROLE.MANAGER;
 
     const kpiCards = [
         {
@@ -272,6 +278,67 @@ export default function Dashboard() {
                     >
                         Dodaj obavijest
                     </button>
+                </div>
+            )}
+
+            {/* PWA Screens — Manager only */}
+            {currentUser?.role?.toLowerCase() === ROLE.MANAGER && (
+                <div>
+                    <h2 className="text-lg font-bold text-slate-900 mb-4">PWA Ekrani</h2>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[
+                            {
+                                id: "manager",
+                                label: "Menadžer",
+                                description: "Checklist smjene, KPI, rasporedi",
+                                icon: ListTodo,
+                                color: "bg-violet-500",
+                                ring: "hover:ring-violet-300",
+                            },
+                            {
+                                id: "waiter",
+                                label: "Konobar",
+                                description: "Narudžbe, checklist, napojnice",
+                                icon: Smartphone,
+                                color: "bg-blue-500",
+                                ring: "hover:ring-blue-300",
+                            },
+                            {
+                                id: "cook",
+                                label: "Kuvar",
+                                description: "HACCP, recepti, narudžbe kuhinje",
+                                icon: ChefHat,
+                                color: "bg-orange-500",
+                                ring: "hover:ring-orange-300",
+                            },
+                            {
+                                id: "housekeeper",
+                                label: "Sobarica",
+                                description: "Čišćenje soba, checklist, status",
+                                icon: HomeIcon,
+                                color: "bg-emerald-500",
+                                ring: "hover:ring-emerald-300",
+                            },
+                        ].map((pwa) => {
+                            const Icon = pwa.icon;
+                            return (
+                                <button
+                                    key={pwa.id}
+                                    onClick={() => navigate(`/app/${pwa.id}`)}
+                                    className={`bg-white rounded-xl border border-slate-200 p-5 text-left shadow-sm hover:shadow-md hover:ring-2 ${pwa.ring} transition-all duration-200 group`}
+                                >
+                                    <div className={`${pwa.color} w-10 h-10 rounded-lg flex items-center justify-center mb-3`}>
+                                        <Icon className="w-5 h-5 text-white" />
+                                    </div>
+                                    <p className="font-semibold text-slate-900 text-sm">{pwa.label}</p>
+                                    <p className="text-xs text-slate-500 mt-1 leading-tight">{pwa.description}</p>
+                                    <div className="flex items-center gap-1 mt-3 text-xs font-medium text-slate-400 group-hover:text-slate-600 transition-colors">
+                                        Otvori <ArrowRight className="w-3 h-3" />
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 

@@ -3,4 +3,5 @@ export enum ROLE {
   CUSTOMER = "customer",
   MANAGER = "manager",
   WORKER = "worker",
+  CUSTOMER1 = "CUSTOMER",
 }
