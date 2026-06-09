@@ -12,6 +12,8 @@ import {
     ChefHat,
     Home,
     ListTodo,
+    PlayCircle,
+    StopCircle,
 } from "lucide-react";
 import {useLanguage} from "../contexts/LanguageContext";
 import {useAuth} from "../contexts/AuthContext";
@@ -32,6 +34,15 @@ export default function Navigation({
     const {t} = useLanguage();
     const {currentUser} = useAuth();
     const isWorker = currentUser?.role?.toLowerCase() === "worker";
+
+    // Map user type to their PWA route (housekeeping → housekeeper)
+    const TYPE_TO_PWA: Record<string, string> = {
+        waiter: "waiter",
+        cook: "cook",
+        housekeeping: "housekeeper",
+        manager: "manager",
+    };
+    const workerPwaId = currentUser?.type ? TYPE_TO_PWA[currentUser.type] : undefined;
 
     const menuItems = [
         {id: "home", icon: LayoutDashboard, label: t("nav.dashboard")},
@@ -69,7 +80,7 @@ export default function Navigation({
             </div>
 
             <nav className="p-4 space-y-1">
-                {menuItems.map((item) => {
+                {!isWorker && menuItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = currentPage === item.id;
 
@@ -93,26 +104,27 @@ export default function Navigation({
                 })}
 
                 {isWorker && (
-                <div className="pt-4 mt-4 border-t border-slate-200">
-                    <p className="text-xs font-semibold text-slate-500 uppercase px-4 mb-2">
-                        PWA Ekrani
-                    </p>
-                    {pwaItems.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = currentPage === item.id;
-
+                <div className="pt-2">
+                    {[
+                        { id: "shift-start", icon: PlayCircle,   label: "Početak smjene", color: "emerald" },
+                        { id: workerPwaId ?? "home", icon: ClipboardCheck, label: "Moja lista",       color: "blue" },
+                        { id: "shift-end",   icon: StopCircle,   label: "Kraj smjene",   color: "red" },
+                    ].map(({ id, icon: Icon, label, color }) => {
+                        const isActive = currentPage === id;
+                        const activeClass =
+                            color === "emerald" ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
+                          : color === "red"     ? "bg-red-500 text-white shadow-md shadow-red-500/30"
+                          :                       "bg-blue-600 text-white shadow-md shadow-blue-600/30";
                         return (
                             <button
-                                key={item.id}
-                                onClick={() => onNavigate(item.id)}
+                                key={id}
+                                onClick={() => { onNavigate(id); onClose(); }}
                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                                    isActive
-                                        ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
-                                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                    isActive ? activeClass : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                                 }`}
                             >
-                                <Icon className="w-5 h-5"/>
-                                <span className="font-medium text-sm">{item.label}</span>
+                                <Icon className="w-5 h-5" />
+                                <span className="font-medium text-sm">{label}</span>
                             </button>
                         );
                     })}
