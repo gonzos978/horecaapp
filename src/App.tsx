@@ -30,6 +30,7 @@ import Training from "./pages/Training";
 import Settings from "./pages/Settings";
 import AnonymousReports from "./pages/AnonymousReports";
 import WorkerStats from "./pages/WorkerStats";
+import WorkerProfile from "./pages/WorkerProfile";
 import WaiterApp from "./pages/pwa/WaiterApp";
 import CookApp from "./pages/pwa/CookApp";
 import HousekeeperApp from "./pages/pwa/HousekeeperApp";
@@ -195,6 +196,7 @@ export default function App() {
                         <Route path="settings" element={<Settings />} />
                         <Route path="anonymousReports" element={<AnonymousReports />} />
                         <Route path="workerStats" element={<WorkerStats />} />
+                        <Route path="workerProfile" element={<WorkerProfile />} />
                         <Route path="waiter" element={<WaiterApp />} />
                         <Route path="cook" element={<CookApp />} />
                         <Route path="housekeeper" element={<HousekeeperApp />} />

@@ -16,6 +16,7 @@ import {
     StopCircle,
     UserX,
     TrendingUp,
+    UserCircle,
 } from "lucide-react";
 import {useLanguage} from "../contexts/LanguageContext";
 import {useAuth} from "../contexts/AuthContext";
@@ -57,6 +58,7 @@ export default function Navigation({
         {id: "training", icon: GraduationCap, label: t("nav.training")},
         {id: "anonymousReports", icon: Shield, label: t("nav.anonymousReports")},
         {id: "workerStats", icon: TrendingUp, label: "Statistika radnika"},
+        {id: "workerProfile", icon: UserCircle, label: "Profil radnika"},
         {id: "settings", icon: Settings, label: t("nav.settings")},
     ];
 
