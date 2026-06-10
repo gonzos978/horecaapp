@@ -1,0 +1,250 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /{path=**}/zones/{zoneId} {
+      allow read: if true;
+    }
+
+    // -------------------------
+    // HELPERS
+    // -------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function getUserData() {
+      // User docs are keyed by email (set by AddUserModal), not by UID
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+    function isSuperAdmin() {
+      return isSignedIn()
+        && getUserData().type == "SUPER_ADMIN";
+    }
+    function isAdmin() {
+      return isSignedIn()
+        && (getUserData().role == "admin"
+            || getUserData().type == "SUPER_ADMIN");
+    }
+    function isCustomer() {
+      return isSignedIn()
+        && getUserData().role == "CUSTOMER";
+    }
+    function isWorker() {
+      return isSignedIn()
+        && getUserData().role == "worker";
+    }
+    function isManagerOrCustomer() {
+      return isSignedIn()
+        && getUserData().role in ["manager", "MANAGER", "customer", "CUSTOMER"];
+    }
+
+    // PDF STORAGE
+    match /training-instructions/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // =====================================================
+    // USERS
+    // =====================================================
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null &&
+        (
+          (
+            request.resource.data.role == "customer"
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+          )
+          ||
+          (
+            request.resource.data.role == "manager"
+            && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "customer"
+          )
+          ||
+          (
+            request.resource.data.role == "worker"
+            && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "manager"
+          )
+        );
+      allow update: if request.auth != null &&
+        (
+          request.auth.token.email == userId ||
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role in ["admin", "manager", "customer"]
+        );
+      allow delete: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+          in ["admin", "customer", "manager"]
+      );
+    }
+
+    // =====================================================
+    // CHECKLISTS
+    // =====================================================
+    match /checklists/{checklistId} {
+      allow read, write: if true;
+
+      match /zones/{zoneId} {
+        allow read, write: if true;
+
+        match /items/{itemId} {
+          allow read, write: if true;
+        }
+      }
+    }
+
+    // =====================================================
+    // MENU ITEMS
+    // =====================================================
+    match /menu_items/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+          in ["worker", "manager", "customer", "admin"];
+      allow update: if request.auth != null
+        && (
+          resource.data.ownerId == request.auth.uid
+          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+            in ["manager", "admin"]
+        );
+      allow delete: if request.auth != null
+        && (
+          resource.data.ownerId == request.auth.uid
+          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+            in ["manager", "customer", "admin"]
+        );
+    }
+
+    // =====================================================
+    // WORKING DAYS
+    // =====================================================
+    match /workingDays/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.email == request.auth.token.email
+        && (
+          request.resource.data.role == "worker"
+          || request.resource.data.role == "manager"
+        );
+      allow update: if request.auth != null
+        && resource.data.email == request.auth.token.email;
+      allow delete: if request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // =====================================================
+    // NOTIFICATIONS
+    // =====================================================
+    match /notifications/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "customer"
+          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "manager"
+          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "worker"
+        );
+      allow update: if request.auth != null
+        && resource.data.creatorId == request.auth.uid;
+      allow delete: if request.auth != null
+        && (
+          resource.data.creatorId == request.auth.uid
+          || (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "customer"
+                || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "manager")
+          )
+        );
+    }
+
+    // =====================================================
+    // MENU
+    // =====================================================
+    match /menu/{menuId} {
+      allow read: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+      allow delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    // =====================================================
+    // CUSTOMERS
+    // =====================================================
+    match /customers/{customerId} {
+      allow read: if isSuperAdmin()
+                  || (isSignedIn() && getUserData().customerId == customerId);
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+
+      match /managers/{managerId} {
+        allow read: if isSuperAdmin()
+                    || (isSignedIn() && getUserData().customerId == customerId);
+        allow create, update, delete: if isSuperAdmin();
+      }
+    }
+
+    // =====================================================
+    // SHIFTS
+    // Workers create/read/update their own shifts.
+    // Managers & Customers can read shifts for their company.
+    // =====================================================
+    match /shifts/{shiftId} {
+      allow create: if isSignedIn()
+                    && getUserData().role == "worker"
+                    && request.resource.data.workerId == request.auth.uid;
+
+      allow read: if isSignedIn()
+                  && (
+                    resource.data.workerId == request.auth.uid
+                    || (isManagerOrCustomer()
+                        && resource.data.customerId == getUserData().customerId)
+                    || isSuperAdmin()
+                  );
+
+      allow update: if isSignedIn()
+                    && resource.data.workerId == request.auth.uid;
+
+      // Submitted checklist snapshots
+      match /checklists/{checklistId} {
+        allow create, update: if isSignedIn()
+                      && request.resource.data.workerId == request.auth.uid;
+
+        allow read: if isSignedIn()
+                    && (
+                      get(/databases/$(database)/documents/shifts/$(shiftId)).data.workerId == request.auth.uid
+                      || isManagerOrCustomer()
+                      || isSuperAdmin()
+                    );
+      }
+
+      // Individual actions within a shift
+      match /actions/{actionId} {
+        allow create: if isSignedIn()
+                      && request.resource.data.workerId == request.auth.uid;
+
+        allow read: if isSignedIn()
+                    && (
+                      resource.data.workerId == request.auth.uid
+                      || isManagerOrCustomer()
+                      || isSuperAdmin()
+                    );
+      }
+    }
+
+    // =====================================================
+    // GENERATED TESTS
+    // =====================================================
+    match /generated_tests/{testId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+  }
+}
