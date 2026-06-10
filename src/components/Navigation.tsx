@@ -15,6 +15,7 @@ import {
     PlayCircle,
     StopCircle,
     UserX,
+    TrendingUp,
 } from "lucide-react";
 import {useLanguage} from "../contexts/LanguageContext";
 import {useAuth} from "../contexts/AuthContext";
@@ -55,6 +56,7 @@ export default function Navigation({
         {id: "checklists", icon: ClipboardCheck, label: t("nav.checklists")},
         {id: "training", icon: GraduationCap, label: t("nav.training")},
         {id: "anonymousReports", icon: Shield, label: t("nav.anonymousReports")},
+        {id: "workerStats", icon: TrendingUp, label: "Statistika radnika"},
         {id: "settings", icon: Settings, label: t("nav.settings")},
     ];
 
