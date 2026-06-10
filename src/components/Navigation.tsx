@@ -58,6 +58,7 @@ export default function Navigation({
         {id: "settings", icon: Settings, label: t("nav.settings")},
     ];
 
+    // @ts-ignore
     const pwaItems = [
         {id: "manager", icon: ListTodo, label: "Menadžer PWA"},
         {id: "waiter", icon: Smartphone, label: "Konobar PWA"},
@@ -110,7 +111,7 @@ export default function Navigation({
                         { id: "shift-start",                     icon: PlayCircle,    label: "Početak smjene",   color: "emerald", hideOnChecklist: false },
                         { id: workerPwaId ?? "home",              icon: ClipboardCheck,label: "Moja lista",       color: "blue",    hideOnChecklist: false },
                         { id: "shift-end",                       icon: StopCircle,    label: "Kraj smjene",      color: "red",     hideOnChecklist: false },
-                        { id: "anonymousReports",                 icon: UserX,         label: "Anonimna prijava", color: "slate",   hideOnChecklist: true  },
+                        { id: "anonymousReports",                 icon: UserX,         label: "Anonimna prijava", color: "slate",   hideOnChecklist: false },
                     ].filter(item => !(item.hideOnChecklist && currentPage === (workerPwaId ?? "home")))
                     .map(({ id, icon: Icon, label, color }) => {
                         const isActive = currentPage === id;
