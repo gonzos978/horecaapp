@@ -41,6 +41,8 @@ import ChecklistListView from "./pages/admin/ChecklistListView.tsx";
 import AdminAddChecklist from "./pages/admin/AddChecklists.tsx";
 import { Toaster } from "react-hot-toast";
 import CreateTest from "./pages/admin/CreateTest.tsx";
+import ShiftStart from "./pages/worker/ShiftStart.tsx";
+import ShiftEnd from "./pages/worker/ShiftEnd.tsx";
 
 // -------------------- ROUTE GUARDS --------------------
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -52,9 +54,17 @@ function AdminRoute({ children }: { children: JSX.Element }) {
 }
 
 function UserRoute({ children }: { children: JSX.Element }) {
-    const { user, loading } = useAuth();
+    const { user, loading, currentUser } = useAuth();
     if (loading) return <div>Loading...</div>;
     if (!user) return <Navigate to="/admin/login" replace />;
+    // Workers go straight to their shift-start screen
+    if (currentUser?.role?.toLowerCase() === "worker") {
+        const workerPaths = ["/app/shift-start", "/app/shift-end", "/app/waiter", "/app/cook", "/app/housekeeper", "/app/manager"];
+        const alreadyOnWorkerPage = workerPaths.some(p => window.location.pathname.startsWith(p));
+        if (!alreadyOnWorkerPage) {
+            return <Navigate to="/app/shift-start" replace />;
+        }
+    }
     return children;
 }
 
@@ -187,6 +197,9 @@ export default function App() {
                         <Route path="cook" element={<CookApp />} />
                         <Route path="housekeeper" element={<HousekeeperApp />} />
                         <Route path="manager" element={<ManagerApp />} />
+                        {/* WORKER SHIFT ROUTES */}
+                        <Route path="shift-start" element={<ShiftStart />} />
+                        <Route path="shift-end" element={<ShiftEnd />} />
                     </Route>
 
                     {/* DEFAULT */}
