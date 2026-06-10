@@ -240,6 +240,32 @@ service cloud.firestore {
     }
 
     // =====================================================
+    // ANONYMOUS REPORTS
+    // Workers can create reports and read only their own.
+    // Managers/customers can read all reports for their company.
+    // Only managers/customers/admins can update (status, adminNote).
+    // =====================================================
+    match /anonymous_reports/{reportId} {
+      allow create: if isSignedIn()
+                    && request.resource.data.workerId == request.auth.uid;
+
+      allow read: if isSignedIn()
+                  && (
+                    resource.data.workerId == request.auth.uid
+                    || (isManagerOrCustomer()
+                        && resource.data.customerId == getUserData().customerId)
+                    || isSuperAdmin()
+                  );
+
+      allow update: if isSignedIn()
+                    && (
+                      isManagerOrCustomer()
+                      && resource.data.customerId == getUserData().customerId
+                      || isSuperAdmin()
+                    );
+    }
+
+    // =====================================================
     // GENERATED TESTS
     // =====================================================
     match /generated_tests/{testId} {
