@@ -1,213 +1,445 @@
 import { useState, useEffect } from 'react';
-import { Shield, AlertTriangle, CheckCircle, Clock, Eye } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
-import { supabase } from '../lib/supabase';
+import {
+  Shield, Clock, CheckCircle, AlertTriangle, Send,
+  ChevronDown, ChevronUp, RefreshCw, FileText, Loader2
+} from 'lucide-react';
+import {
+  collection, addDoc, getDocs, query, where,
+  orderBy, serverTimestamp, updateDoc, doc, Timestamp
+} from 'firebase/firestore';
+import { db } from '../fb/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import Header from '../components/Header';
 
-export default function AnonymousReports() {
-  const { t, language } = useLanguage();
-  const [reports, setReports] = useState<any[]>([]);
-  const [dummyReports] = useState([
-    {
-      id: 'dummy-1',
-      report_type: 'harassment',
-      severity_ai: 'CRITICAL',
-      credibility_score: 92,
-      sender_profile: 'reliable',
-      status: 'investigating',
-      description: 'Konobar Marko P. (ID: W034) stalno pravi neprikladne komentare o mom izgledu i fizičkom izgledu. Kada sam ga upozorila da prestanem, rekao je da preosjetljivo reagujem. Ovo se dešava svaki dan tokom smjene i osjećam se veoma neugodno. Više puta me je pitao da li želim da izađem sa njim nakon posla, iako sam jasno rekla ne. Molim da se ovo uradi odmah jer više ne mogu ovako.',
-      recommended_action: 'Hitno provesti internu istragu. Razgovor sa optuženim radnikom i razgovor sa svjedocima. Razmotriti suspenziju do okončanja istrage. Dokumentovati sve dokaze.',
-      created_at: '2025-12-08T14:20:00',
-      evidence_data: { report_id: 'AR-2025-089' }
-    },
-    {
-      id: 'dummy-2',
-      report_type: 'guest_complaint',
-      severity_ai: 'HIGH',
-      credibility_score: 88,
-      sender_profile: 'reliable',
-      status: 'pending',
-      description: 'Gost iz sobe 305 je uputio žestoku usmenu kritiku sobarici Ani K. (ID: W012) zbog nečistoće sobe. Rekao je da su peškiri bili prljavi, da je kupatilo bilo loše očišćeno i da je pronašao kosu na jastuku. Rekao je da je ovo "neprihvatljivo za hotel ovog kalibra" i zahtijevao je da se soba ponovo očisti. Ana je bila vidno uznemirena nakon ovog incidenta. Gost je takođe spomenuo da će napisati negativnu recenziju na TripAdvisoru.',
-      recommended_action: 'Provjeriti sličnost sa postojećim izvještajima sobarice. Izvršiti inspekciju sobe 305. Organizovati dodatnu obuku za očišćavanje. Razmotriti kontakt sa gostom za ispriku i nadoknadu.',
-      created_at: '2025-12-08T11:45:00',
-      evidence_data: { report_id: 'AR-2025-090', room_number: '305' }
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ReportStatus = 'pending' | 'investigating' | 'resolved' | 'dismissed';
+type ReportType   = 'harassment' | 'guest_complaint' | 'safety_hazard' | 'theft' | 'other';
+
+interface AnonReport {
+  id: string;
+  type: ReportType;
+  description: string;
+  status: ReportStatus;
+  customerId: string;
+  customerName: string;
+  workerId: string;       // stored for self-lookup; never shown to admins
+  createdAt: Timestamp;
+  adminNote?: string;
+}
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+const REPORT_TYPES: { value: ReportType; label: string }[] = [
+  { value: 'harassment',      label: 'Uznemiravanje / mobing' },
+  { value: 'guest_complaint', label: 'Pritužba gosta' },
+  { value: 'safety_hazard',   label: 'Sigurnosni rizik' },
+  { value: 'theft',           label: 'Krađa / prevara' },
+  { value: 'other',           label: 'Ostalo' },
+];
+
+const STATUS_CFG: Record<ReportStatus, { label: string; color: string }> = {
+  pending:      { label: 'Na čekanju',    color: 'bg-amber-100 text-amber-800' },
+  investigating:{ label: 'U istrazi',     color: 'bg-blue-100 text-blue-800' },
+  resolved:     { label: 'Riješeno',      color: 'bg-emerald-100 text-emerald-800' },
+  dismissed:    { label: 'Odbačeno',      color: 'bg-slate-100 text-slate-600' },
+};
+
+const TYPE_LABEL: Record<ReportType, string> = {
+  harassment:      'Uznemiravanje',
+  guest_complaint: 'Pritužba gosta',
+  safety_hazard:   'Sigurnosni rizik',
+  theft:           'Krađa / prevara',
+  other:           'Ostalo',
+};
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: ReportStatus }) {
+  const cfg = STATUS_CFG[status] ?? STATUS_CFG.pending;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.color}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function fmtDate(ts: Timestamp | undefined) {
+  if (!ts?.toDate) return '—';
+  return ts.toDate().toLocaleString('bs-BA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// ─── Worker view ──────────────────────────────────────────────────────────────
+
+function WorkerView() {
+  const { user, currentUser } = useAuth();
+
+  const [type, setType]           = useState<ReportType>('harassment');
+  const [description, setDesc]    = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess]     = useState(false);
+  const [error, setError]         = useState('');
+
+  const [myReports, setMyReports] = useState<AnonReport[]>([]);
+  const [loadingReports, setLoadingReports] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const loadMyReports = async () => {
+    if (!user?.uid) return;
+    setLoadingReports(true);
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, 'anonymous_reports'),
+          where('workerId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        )
+      );
+      setMyReports(snap.docs.map(d => ({ id: d.id, ...d.data() } as AnonReport)));
+    } catch (e) {
+      console.error('loadMyReports:', e);
+    } finally {
+      setLoadingReports(false);
     }
-  ]);
+  };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadMyReports(); }, [user?.uid]);
 
-  const loadData = async () => {
-    const { data } = await supabase
-      .from('anonymous_reports')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim()) { setError('Opis je obavezan.'); return; }
+    if (!user?.uid || !currentUser) { setError('Nisi prijavljen.'); return; }
 
-    if (data) {
-      setReports([...dummyReports, ...data]);
-    } else {
-      setReports(dummyReports);
+    setSubmitting(true);
+    setError('');
+    try {
+      await addDoc(collection(db, 'anonymous_reports'), {
+        type,
+        description: description.trim(),
+        status: 'pending' as ReportStatus,
+        customerId: currentUser.customerId ?? '',
+        customerName: currentUser.customerName ?? '',
+        workerId: user.uid,
+        createdAt: serverTimestamp(),
+        adminNote: '',
+      });
+      setSuccess(true);
+      setDesc('');
+      setType('harassment');
+      await loadMyReports();
+      setTimeout(() => setSuccess(false), 4000);
+    } catch (e: any) {
+      setError(e?.message ?? 'Greška pri slanju.');
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  const credibilityColor = (score: number) => {
-    if (score >= 80) return 'text-emerald-600 bg-emerald-100';
-    if (score >= 60) return 'text-amber-600 bg-amber-100';
-    return 'text-red-600 bg-red-100';
-  };
-
-  const profileBadge = (profile: string) => {
-    const config: { [key: string]: { color: string; label: string } } = {
-      reliable: { color: 'bg-emerald-100 text-emerald-800', label: t('anonymousReports.reliable') },
-      unreliable: { color: 'bg-red-100 text-red-800', label: t('anonymousReports.unreliable') },
-      average: { color: 'bg-amber-100 text-amber-800', label: t('anonymousReports.average') },
-      new: { color: 'bg-blue-100 text-blue-800', label: 'Nov' },
-      unknown: { color: 'bg-slate-100 text-slate-800', label: 'Nepoznat' }
-    };
-    return config[profile] || config.unknown;
-  };
-
-  const severityConfig = {
-    LOW: { color: 'bg-blue-100 text-blue-800', icon: AlertTriangle },
-    MEDIUM: { color: 'bg-amber-100 text-amber-800', icon: AlertTriangle },
-    HIGH: { color: 'bg-orange-100 text-orange-800', icon: AlertTriangle },
-    CRITICAL: { color: 'bg-red-100 text-red-800', icon: AlertTriangle }
-  };
-
-  const statusConfig = {
-    pending: { color: 'bg-amber-100 text-amber-800', label: 'Na čekanju' },
-    investigating: { color: 'bg-blue-100 text-blue-800', label: t('anonymousReports.investigating') },
-    resolved: { color: 'bg-emerald-100 text-emerald-800', label: t('anonymousReports.resolved') },
-    dismissed: { color: 'bg-slate-100 text-slate-800', label: t('anonymousReports.dismissed') }
   };
 
   return (
-    <div className="space-y-6">
-      <Header title={t('anonymousReports.title')} subtitle={`${reports.length} prijava`} />
+    <div className="max-w-2xl mx-auto space-y-6">
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {['pending', 'investigating', 'resolved', 'dismissed'].map((status) => {
-          const count = reports.filter(r => r.status === status).length;
-          const config = statusConfig[status as keyof typeof statusConfig];
-
-          return (
-            <div key={status} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 font-medium">{config.label}</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">{count}</p>
-                </div>
-                <div className={`${config.color} p-3 rounded-lg`}>
-                  <Shield className="w-5 h-5" />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  ID
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  {t('anonymousReports.credibility')}
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  {t('anonymousReports.reportType')}
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  Severity
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  {t('anonymousReports.senderProfile')}
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  Vrijeme
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {reports.map((report) => {
-                const evidence = report.evidence_data || {};
-                const reportId = evidence.report_id || report.id.substring(0, 8);
-                const severity = severityConfig[report.severity_ai as keyof typeof severityConfig];
-                const SeverityIcon = severity.icon;
-                const profile = profileBadge(report.sender_profile);
-                const status = statusConfig[report.status as keyof typeof statusConfig];
-
-                return (
-                  <tr key={report.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="font-mono text-sm font-medium text-slate-900">{reportId}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${credibilityColor(report.credibility_score)}`}>
-                          {report.credibility_score}%
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
-                        {t(`anonymousReports.${report.report_type}`)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium ${severity.color}`}>
-                        <SeverityIcon className="w-3 h-3" />
-                        {report.severity_ai}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${profile.color}`}>
-                        {profile.label}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {new Date(report.created_at).toLocaleString('sr-RS')}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${status.color}`}>
-                        {status.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {reports.length > 0 && reports[0] && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-          <div className="flex items-start gap-4">
-            <Eye className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
-            <div>
-              <h3 className="text-lg font-bold text-blue-900 mb-2">Najnovija prijava (detalji)</h3>
-              <p className="text-slate-700 mb-3">{reports[0].description}</p>
-              {reports[0].recommended_action && (
-                <div className="bg-white border border-blue-300 rounded-lg p-3">
-                  <p className="text-sm font-medium text-blue-900">Preporučena akcija:</p>
-                  <p className="text-sm text-slate-700 mt-1">{reports[0].recommended_action}</p>
-                </div>
-              )}
-            </div>
+      {/* Submit form */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+            <Shield className="w-5 h-5 text-slate-600" />
+          </div>
+          <div>
+            <h2 className="font-bold text-slate-900">Anonimna prijava</h2>
+            <p className="text-xs text-slate-500">Tvoj identitet neće biti otkriven menadžmentu</p>
           </div>
         </div>
-      )}
+
+        {success && (
+          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-emerald-700 text-sm font-medium">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            Prijava je uspješno poslana!
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Vrsta prijave</label>
+            <select
+              value={type}
+              onChange={e => setType(e.target.value as ReportType)}
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-slate-50"
+            >
+              {REPORT_TYPES.map(rt => (
+                <option key={rt.value} value={rt.value}>{rt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Opis</label>
+            <textarea
+              value={description}
+              onChange={e => setDesc(e.target.value)}
+              rows={5}
+              placeholder="Opiši incident što detaljnije..."
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 bg-slate-50"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {submitting ? 'Slanje...' : 'Pošalji anonimno'}
+          </button>
+        </form>
+      </div>
+
+      {/* My reports */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-slate-900">Moje prijave</h2>
+          <button onClick={loadMyReports} className="p-2 hover:bg-slate-100 rounded-lg transition">
+            <RefreshCw className="w-4 h-4 text-slate-500" />
+          </button>
+        </div>
+
+        {loadingReports ? (
+          <div className="text-center py-8 text-slate-400 text-sm">Učitavanje...</div>
+        ) : myReports.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">Nemaš još nijedne prijave.</div>
+        ) : (
+          <div className="space-y-3">
+            {myReports.map(r => (
+              <div key={r.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                  className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{TYPE_LABEL[r.type]}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{fmtDate(r.createdAt)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={r.status} />
+                    {expandedId === r.id
+                      ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                      : <ChevronDown className="w-4 h-4 text-slate-400" />
+                    }
+                  </div>
+                </button>
+                {expandedId === r.id && (
+                  <div className="px-4 pb-4 pt-2 border-t border-slate-100 space-y-2">
+                    <p className="text-sm text-slate-700">{r.description}</p>
+                    {r.adminNote && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-blue-800 mb-0.5">Odgovor menadžmenta:</p>
+                        <p className="text-sm text-blue-900">{r.adminNote}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+// ─── Admin / Manager view ─────────────────────────────────────────────────────
+
+function AdminView() {
+  const { currentUser } = useAuth();
+  const [reports, setReports]     = useState<AnonReport[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [noteInput, setNoteInput] = useState<Record<string, string>>({});
+
+  const loadReports = async () => {
+    setLoading(true);
+    try {
+      const q = currentUser?.customerId
+        ? query(
+            collection(db, 'anonymous_reports'),
+            where('customerId', '==', currentUser.customerId),
+            orderBy('createdAt', 'desc')
+          )
+        : query(collection(db, 'anonymous_reports'), orderBy('createdAt', 'desc'));
+
+      const snap = await getDocs(q);
+      setReports(snap.docs.map(d => ({ id: d.id, ...d.data() } as AnonReport)));
+    } catch (e) {
+      console.error('AdminView loadReports:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadReports(); }, [currentUser?.customerId]);
+
+  const updateStatus = async (reportId: string, status: ReportStatus) => {
+    setUpdatingId(reportId);
+    try {
+      await updateDoc(doc(db, 'anonymous_reports', reportId), { status });
+      setReports(prev => prev.map(r => r.id === reportId ? { ...r, status } : r));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const saveNote = async (reportId: string) => {
+    const note = noteInput[reportId] ?? '';
+    setUpdatingId(reportId);
+    try {
+      await updateDoc(doc(db, 'anonymous_reports', reportId), { adminNote: note });
+      setReports(prev => prev.map(r => r.id === reportId ? { ...r, adminNote: note } : r));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const statusCounts = (Object.keys(STATUS_CFG) as ReportStatus[]).map(s => ({
+    status: s,
+    count: reports.filter(r => r.status === s).length,
+    ...STATUS_CFG[s],
+  }));
+
+  return (
+    <div className="space-y-6">
+      <Header
+        title="Anonimne prijave"
+        subtitle={`${reports.length} ukupno`}
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {statusCounts.map(s => (
+          <div key={s.status} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <p className="text-sm text-slate-500 font-medium">{s.label}</p>
+            <p className="text-3xl font-black text-slate-900 mt-1">{s.count}</p>
+            <div className={`mt-2 inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${s.color}`}>
+              {s.label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Reports list */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="font-bold text-slate-900">Sve prijave</h2>
+          <button onClick={loadReports} className="p-2 hover:bg-slate-100 rounded-lg transition">
+            <RefreshCw className="w-4 h-4 text-slate-500" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12 text-slate-400 text-sm">Učitavanje prijava...</div>
+        ) : reports.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-sm">Nema prijava.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {reports.map(r => (
+              <div key={r.id}>
+                {/* Row header */}
+                <button
+                  onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                  className="w-full flex items-center gap-4 px-6 py-4 text-left hover:bg-slate-50 transition"
+                >
+                  <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 truncate">{TYPE_LABEL[r.type]}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 truncate">{r.description.slice(0, 60)}...</p>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      <Clock className="w-3.5 h-3.5" />
+                      {fmtDate(r.createdAt)}
+                    </div>
+                    <StatusBadge status={r.status} />
+                  </div>
+                  {expandedId === r.id
+                    ? <ChevronUp className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  }
+                </button>
+
+                {/* Expanded detail */}
+                {expandedId === r.id && (
+                  <div className="px-6 pb-6 pt-2 bg-slate-50 border-t border-slate-100 space-y-4">
+                    <p className="text-sm text-slate-700 leading-relaxed">{r.description}</p>
+
+                    {/* Status change */}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Promijeni status</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(Object.keys(STATUS_CFG) as ReportStatus[]).map(s => (
+                          <button
+                            key={s}
+                            disabled={r.status === s || updatingId === r.id}
+                            onClick={() => updateStatus(r.id, s)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                              r.status === s
+                                ? `${STATUS_CFG[s].color} border-transparent cursor-default`
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-400'
+                            } disabled:opacity-50`}
+                          >
+                            {updatingId === r.id && r.status !== s
+                              ? <Loader2 className="w-3 h-3 animate-spin inline" />
+                              : STATUS_CFG[s].label
+                            }
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Admin note */}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Odgovor / napomena</p>
+                      <textarea
+                        rows={2}
+                        placeholder="Upiši odgovor koji će biti vidljiv podnosiocu..."
+                        value={noteInput[r.id] ?? r.adminNote ?? ''}
+                        onChange={e => setNoteInput(prev => ({ ...prev, [r.id]: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 bg-white"
+                      />
+                      <button
+                        onClick={() => saveNote(r.id)}
+                        disabled={updatingId === r.id}
+                        className="mt-2 flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition disabled:opacity-50"
+                      >
+                        {updatingId === r.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <CheckCircle className="w-3 h-3" />
+                        }
+                        Sačuvaj napomenu
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+
+export default function AnonymousReports() {
+  const { currentUser } = useAuth();
+  const isWorker = currentUser?.role?.toLowerCase() === 'worker';
+  return isWorker ? <WorkerView /> : <AdminView />;
 }
