@@ -80,9 +80,21 @@ export function useWorkerShift() {
         return shift;
     };
 
-    // End the active shift
+    // End the active shift — requires at least 8 hours since start
     const endShift = async (notes: string) => {
         if (!activeShift) throw new Error("No active shift");
+
+        const startMs = activeShift.startTime?.toMillis?.() ?? activeShift.startTime?.seconds * 1000;
+        const elapsedMs = Date.now() - startMs;
+        const MIN_SHIFT_MS = 8 * 60 * 60 * 1000;
+
+        if (elapsedMs < MIN_SHIFT_MS) {
+            const remainingMs = MIN_SHIFT_MS - elapsedMs;
+            const h = Math.floor(remainingMs / 3600000);
+            const m = Math.ceil((remainingMs % 3600000) / 60000);
+            throw new Error(`MIN_SHIFT_HOURS:${h}:${m}`);
+        }
+
         await updateDoc(doc(db, "shifts", activeShift.id), {
             endTime: serverTimestamp(),
             status: "completed",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StopCircle, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { StopCircle, Clock, CheckCircle, AlertTriangle, Hourglass } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useWorkerShift } from "../../hooks/useWorkerShift";
 
@@ -10,6 +10,7 @@ export default function ShiftEnd() {
     const [done, setDone] = useState(false);
     const [note, setNote] = useState("");
     const [error, setError] = useState("");
+    const [tooEarly, setTooEarly] = useState<{ h: number; m: number } | null>(null);
     const [time] = useState(() =>
         new Date().toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" })
     );
@@ -17,11 +18,18 @@ export default function ShiftEnd() {
     const handleEnd = async () => {
         setEnding(true);
         setError("");
+        setTooEarly(null);
         try {
             await endShift(note);
             setDone(true);
         } catch (err: any) {
-            setError(err?.message ?? "Greška pri završetku smjene.");
+            const msg: string = err?.message ?? "";
+            if (msg.startsWith("MIN_SHIFT_HOURS:")) {
+                const [, h, m] = msg.split(":");
+                setTooEarly({ h: parseInt(h), m: parseInt(m) });
+            } else {
+                setError(msg || "Greška pri završetku smjene.");
+            }
             setEnding(false);
         }
     };
@@ -87,6 +95,23 @@ export default function ShiftEnd() {
                 />
             </div>
 
+            {tooEarly && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 flex gap-4 items-start">
+                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Hourglass className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                        <p className="font-bold text-amber-900 text-sm">Prerano za završetak smjene</p>
+                        <p className="text-amber-700 text-sm mt-0.5">
+                            Smjena mora trajati najmanje <span className="font-bold">8 sati</span>.
+                            {tooEarly.h > 0
+                                ? ` Preostalo: ${tooEarly.h}h ${tooEarly.m}min.`
+                                : ` Preostalo: ${tooEarly.m}min.`}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {error && (
                 <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
                     <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -96,7 +121,7 @@ export default function ShiftEnd() {
 
             <button
                 onClick={handleEnd}
-                disabled={ending || !activeShift}
+                disabled={ending || !activeShift || !!tooEarly}
                 className="w-full flex items-center justify-center gap-3 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl shadow-md shadow-red-500/30 transition-all text-lg"
             >
                 <StopCircle className="w-6 h-6" />
