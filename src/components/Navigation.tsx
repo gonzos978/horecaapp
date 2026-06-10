@@ -14,6 +14,7 @@ import {
     ListTodo,
     PlayCircle,
     StopCircle,
+    UserX,
 } from "lucide-react";
 import {useLanguage} from "../contexts/LanguageContext";
 import {useAuth} from "../contexts/AuthContext";
@@ -106,14 +107,17 @@ export default function Navigation({
                 {isWorker && (
                 <div className="pt-2">
                     {[
-                        { id: "shift-start", icon: PlayCircle,   label: "Početak smjene", color: "emerald" },
-                        { id: workerPwaId ?? "home", icon: ClipboardCheck, label: "Moja lista",       color: "blue" },
-                        { id: "shift-end",   icon: StopCircle,   label: "Kraj smjene",   color: "red" },
-                    ].map(({ id, icon: Icon, label, color }) => {
+                        { id: "shift-start",                     icon: PlayCircle,    label: "Početak smjene",   color: "emerald", hideOnChecklist: false },
+                        { id: workerPwaId ?? "home",              icon: ClipboardCheck,label: "Moja lista",       color: "blue",    hideOnChecklist: false },
+                        { id: "shift-end",                       icon: StopCircle,    label: "Kraj smjene",      color: "red",     hideOnChecklist: false },
+                        { id: "anonymousReports",                 icon: UserX,         label: "Anonimna prijava", color: "slate",   hideOnChecklist: true  },
+                    ].filter(item => !(item.hideOnChecklist && currentPage === (workerPwaId ?? "home")))
+                    .map(({ id, icon: Icon, label, color }) => {
                         const isActive = currentPage === id;
                         const activeClass =
                             color === "emerald" ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
                           : color === "red"     ? "bg-red-500 text-white shadow-md shadow-red-500/30"
+                          : color === "slate"   ? "bg-slate-700 text-white shadow-md shadow-slate-700/30"
                           :                       "bg-blue-600 text-white shadow-md shadow-blue-600/30";
                         return (
                             <button
