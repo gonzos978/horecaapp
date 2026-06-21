@@ -10,8 +10,24 @@ import { getAuth } from "firebase/auth";
 import { useAuth } from '../contexts/AuthContext';
 
 const ROLE_LABELS: Record<string, string> = {
-    waiter: 'Konobar', cook: 'Kuvar', housekeeping: 'Sobarica',
-    manager: 'Menadžer', barman: 'Šanker',
+    waiter:             'Konobar',
+    cook:               'Kuvar',
+    housekeeping:       'Sobarica',
+    manager:            'Menadžer',
+    barman:             'Šanker',
+    hotel_manager:      'Menadžer hotela',
+    restaurant_manager: 'Menadžer restorana',
+    executive_chef:     'Glavni kuvar',
+    sous_cook:          'Pomoćni kuvar',
+    mixologist:         'Koktel majstor',
+    bartender:          'Šanker (bar)',
+    busser:             'Servirka',
+    housekeeper:        'Sobarica (sobe)',
+    night_security:     'Noćni čuvar',
+    cleaner:            'Higijeničarka',
+    maintenance:        'Domar',
+    groundskeeper:      'Vrtlar',
+    spa_staff:          'SPA osoblje',
 };
 
 export default function Training() {
