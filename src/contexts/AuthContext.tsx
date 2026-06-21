@@ -71,7 +71,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (!querySnapshot.empty) {
             // Uzmi prvi dokument koji odgovara emailu
             const docSnap = querySnapshot.docs[0];
-            const data = docSnap.data() as FirestoreUser;
+            const raw = docSnap.data() as FirestoreUser;
+            // Normalize role to lowercase so "CUSTOMER", "MANAGER", "WORKER" all work
+            const data: FirestoreUser = { ...raw, role: raw.role?.toLowerCase?.() ?? raw.role };
             setCurrentUser(data);
             setIsAdmin(data.role === "admin");
 

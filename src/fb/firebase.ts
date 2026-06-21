@@ -9,10 +9,7 @@ import {
 
 import { getStorage } from "firebase/storage";
 
-import {
-    getFunctions,
-    connectFunctionsEmulator
-} from "firebase/functions";
+import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
 
@@ -59,18 +56,5 @@ export const storage = getStorage(app);
 
 export const functions = getFunctions(app);
 
-/**
- * LOCAL EMULATOR
- * OPTIONAL
- */
-
-if (window.location.hostname === "localhost") {
-
-    connectFunctionsEmulator(
-        functions,
-        "127.0.0.1",
-        5001
-    );
-}
 
 export { serverTimestamp };

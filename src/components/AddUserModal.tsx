@@ -1,10 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
-import { auth, db } from "../fb/firebase";
-import { setDoc, doc, serverTimestamp } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../fb/firebase";
 import { ROLE } from "../models/role";
 import { useAuth } from "../contexts/AuthContext";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 
 interface AddUserModalProps {
   readonly isOpen: boolean;
@@ -21,39 +20,38 @@ interface FormValues {
   readonly type: string;
 }
 
-const AddUserModal: React.FC<AddUserModalProps> = ({
-  isOpen,
-  onClose,
-  onUserAdded,
-}) => {
+const createWorkerFn = httpsCallable(functions, "createWorker");
+
+const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdded }) => {
   const { currentUser } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
   const { register, handleSubmit, reset } = useForm<FormValues>({
-    defaultValues: {
-      type: "waiter",
-    },
+    defaultValues: { type: "waiter" },
   });
 
   const onSubmit = async (data: FormValues) => {
     if (!currentUser) return;
-    const newUser = {
-      ...data,
-      createdAt: serverTimestamp(),
-      customerId: currentUser.customerId,
-      customerName: currentUser.customerName,
-      isAdmin: false,
-      role: currentUser.role === ROLE.CUSTOMER ? ROLE.MANAGER : ROLE.WORKER,
-      type: currentUser.role === ROLE.CUSTOMER ? ROLE.MANAGER : data.type,
-    };
+    setError(null);
+    setLoading(true);
     try {
-      await setDoc(doc(db, "users", newUser.email), {
-        ...newUser,
+      await createWorkerFn({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        phone: data.phone,
+        address: data.address,
+        type: data.type,
       });
-      await createUserWithEmailAndPassword(auth, data.email, data.password);
       reset();
       onClose();
       onUserAdded();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Greška pri dodavanju korisnika:", err);
+      setError(err?.message ?? "Greška pri dodavanju korisnika.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -95,25 +93,35 @@ const AddUserModal: React.FC<AddUserModalProps> = ({
             <select
               id="type"
               {...register("type", { required: "Obavezno polje" })}
+              className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
             >
               <option value="waiter">Konobar</option>
               <option value="cook">Kuhar</option>
               <option value="housekeeping">Sobarica</option>
             </select>
           )}
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+              {error}
+            </p>
+          )}
+
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+              disabled={loading}
+              className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
             >
               Otkaži
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded bg-brand text-white hover:bg-brand-strong"
+              disabled={loading}
+              className="px-4 py-2 rounded bg-brand text-white hover:bg-brand-strong disabled:opacity-50"
             >
-              Sačuvaj
+              {loading ? "Snimanje..." : "Sačuvaj"}
             </button>
           </div>
         </form>

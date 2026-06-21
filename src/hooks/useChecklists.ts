@@ -274,13 +274,32 @@ export function useChecklists(role: string) {
       const newSubmitted = new Set(submitted).add(cl.id);
       setSubmitted(newSubmitted);
 
-      // Recalculate and persist score to the shift document
-      const total = checklistsRef.current.length;
+      // ── Score calculation ──────────────────────────────
+      const allLists = checklistsRef.current;
+      const total = allLists.length;
       const completedCount = newSubmitted.size;
-      const score = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+      // 60 pts: checklist completion rate
+      const checklistRate = total > 0 ? Math.round((completedCount / total) * 60) : 0;
+
+      // 30 pts: item thoroughness — checked items across all submitted lists
+      const submittedLists = allLists.filter((c) => newSubmitted.has(c.id));
+      const totalItemsAll = submittedLists.flatMap((c) => c.zones.flatMap((z) => z.items)).length;
+      const checkedItemsAll = submittedLists.flatMap((c) => c.zones.flatMap((z) => z.items)).filter((i) => i.completed).length;
+      const itemRate = totalItemsAll > 0 ? Math.round((checkedItemsAll / totalItemsAll) * 30) : 0;
+
+      // 10 pts: punctuality — read remindersReceived from shift doc
+      // We don't have it in local state, so we store it separately and read it on shift end
+      // For now save checklistRate + itemRate; punctuality is added on shift end
+      const scorePartial = checklistRate + itemRate;
 
       await updateDoc(doc(db, 'shifts', activeShift.id), {
-        score,
+        score: scorePartial,
+        scoreBreakdown: {
+          checklistRate,
+          itemRate,
+          // punctualityScore filled on shift end when remindersReceived is known
+        },
         checklistsTotal: total,
         checklistsCompleted: completedCount,
         scoreUpdatedAt: serverTimestamp(),

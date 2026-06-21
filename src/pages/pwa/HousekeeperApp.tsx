@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, Home, Award, Star } from 'lucide-react';
+import { CheckCircle, Home, Award, Star, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChecklists } from '../../hooks/useChecklists';
 import ChecklistPanel from '../../components/ChecklistPanel';
@@ -7,7 +7,7 @@ import ShiftScoreCard from '../../components/ShiftScoreCard';
 import { useChecklistNotifications } from '../../hooks/useChecklistNotifications';
 
 export default function HousekeeperApp() {
-  const { currentUser, user } = useAuth();
+  const { currentUser, user, logout } = useAuth();
   const cl = useChecklists('housekeeping');
   useChecklistNotifications({
     activeShift: cl.activeShift,
@@ -36,6 +36,9 @@ export default function HousekeeperApp() {
             <p className="text-sm text-purple-600 font-semibold">Sobarica</p>
             <p className="text-xs text-slate-600">{currentUser?.name}</p>
           </div>
+          <button onClick={logout} className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Odjava">
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </div>
 

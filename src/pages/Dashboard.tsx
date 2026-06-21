@@ -129,8 +129,8 @@ export default function Dashboard() {
         if (!currentUser?.customerId) return;
 
         let rolesToFetch: string[] = [];
-        if (currentUser.role === "manager") rolesToFetch = ["worker"];
-        else if (currentUser.role === "customer")
+        if (currentUser.role?.toLowerCase() === "manager") rolesToFetch = ["worker"];
+        else if (currentUser.role?.toLowerCase() === "customer")
             rolesToFetch = ["manager", "worker"];
         else {
             rolesToFetch = ["worker"];
@@ -164,19 +164,27 @@ export default function Dashboard() {
     const fetchNotifications = async () => {
         if (!currentUser?.customerId) return [];
 
-        const q = query(
-            collection(db, "notifications"),
-            where("customerId", "==", currentUser.customerId),
-            where("visibleFor", "array-contains", currentUser.type),
-            orderBy("createdAt", "desc")
-        );
+        // Single-field where() needs no composite index — sort client-side
+        const q = currentUser.type
+            ? query(
+                collection(db, "notifications"),
+                where("customerId", "==", currentUser.customerId),
+                where("visibleFor", "array-contains", currentUser.type),
+              )
+            : query(
+                collection(db, "notifications"),
+                where("customerId", "==", currentUser.customerId),
+              );
 
         const snapshot = await getDocs(q);
 
-        const notifications: INotification[] = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...(doc.data() as Omit<INotification, "id">),
-        }));
+        const notifications: INotification[] = snapshot.docs
+            .map((doc) => ({ id: doc.id, ...(doc.data() as Omit<INotification, "id">) }))
+            .sort((a, b) => {
+                const ta = a.createdAt?.toMillis?.() ?? 0;
+                const tb = b.createdAt?.toMillis?.() ?? 0;
+                return tb - ta;
+            });
 
         setAlerts(notifications);
     };

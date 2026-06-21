@@ -43,6 +43,7 @@ import ChecklistListView from "./pages/admin/ChecklistListView.tsx";
 import AdminAddChecklist from "./pages/admin/AddChecklists.tsx";
 import { Toaster } from "react-hot-toast";
 import CreateTest from "./pages/admin/CreateTest.tsx";
+import CreateQuiz from "./pages/manager/CreateQuiz.tsx";
 import ShiftStart from "./pages/worker/ShiftStart.tsx";
 import ShiftEnd from "./pages/worker/ShiftEnd.tsx";
 
@@ -193,6 +194,7 @@ export default function App() {
                         <Route path="voice" element={<VoiceOrders />} />
                         <Route path="checklists" element={<Checklists />} />
                         <Route path="training" element={<Training />} />
+                        <Route path="create-quiz" element={<CreateQuiz />} />
                         <Route path="settings" element={<Settings />} />
                         <Route path="anonymousReports" element={<AnonymousReports />} />
                         <Route path="workerStats" element={<WorkerStats />} />

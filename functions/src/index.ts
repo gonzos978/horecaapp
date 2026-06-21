@@ -185,6 +185,90 @@ export const createCustomer = onCall(
 );
 
 /**
+ * =========================================================
+ * CREATE WORKER (called by manager from PWA)
+ * Uses Admin SDK — bypasses Firestore security rules entirely.
+ * =========================================================
+ */
+export const createWorker = onCall(
+    { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError("unauthenticated", "Login required");
+        }
+
+        const requester = await getRequester(request.auth.uid);
+        if (!requester) {
+            throw new HttpsError("permission-denied", "Requester not found");
+        }
+
+        const requesterRole: string = (requester.role ?? "").toLowerCase();
+        if (!["manager", "customer", "admin"].includes(requesterRole) && requester.type !== "SUPER_ADMIN") {
+            throw new HttpsError("permission-denied", "Only managers or customers can create workers");
+        }
+
+        const { name, email, password, phone, address, type } = request.data || {};
+
+        if (!name || !email || !password) {
+            throw new HttpsError("invalid-argument", "name, email and password are required");
+        }
+
+        // Determine new user's role based on who is creating
+        const newRole = requesterRole === "customer" ? "manager" : "worker";
+
+        try {
+            // 1. Create Firebase Auth account (admin SDK — doesn't sign out the caller)
+            const userRecord = await admin.auth().createUser({
+                email,
+                password,
+                displayName: name,
+            });
+
+            // 2. Build Firestore doc with all defaults
+            const now = admin.firestore.FieldValue.serverTimestamp();
+            const userData: Record<string, any> = {
+                uid: userRecord.uid,
+                name,
+                email,
+                phone: phone ?? "",
+                address: address ?? "",
+                type: type ?? "waiter",
+                role: newRole,
+                isAdmin: false,
+                customerId: requester.customerId ?? null,
+                customerName: requester.customerName ?? null,
+                createdAt: now,
+                active: true,
+                training: false,
+                trainingScore: 0,
+                workerStats: {
+                    overallScore: 0,
+                    lastShiftScore: 0,
+                    lastShiftDate: null,
+                    shiftsCount: 0,
+                    recentScores: [],
+                    updatedAt: now,
+                },
+            };
+
+            // 3. Write to users collection keyed by email (existing convention)
+            await db.collection("users").doc(email).set(userData);
+
+            return { success: true, uid: userRecord.uid };
+
+        } catch (error: any) {
+            console.error("createWorker error:", error);
+
+            if (error.code === "auth/email-already-exists") {
+                throw new HttpsError("already-exists", "Email already in use");
+            }
+            if (error instanceof HttpsError) throw error;
+            throw new HttpsError("internal", error?.message || "Failed to create worker");
+        }
+    }
+);
+
+/**
  * DELETE CUSTOMER
  */
 export const deleteCustomerUser = onCall(async (request) => {
@@ -366,17 +450,16 @@ export const generateQuestions = onCall(
         const numQuestions = Math.min(Math.max(Number(count) || 5, 1), 50);
 
         try {
-            // 1. Download PDF from Storage (admin SDK, default bucket)
+            // 1. Download PDF from Storage (admin SDK, explicit bucket)
             console.log(`generateQuestions: downloading ${pdfPath}`);
-            const bucket = getStorage().bucket();
+            const bucket = getStorage().bucket("horecaapp-e16cf.firebasestorage.app");
             const [buffer] = await bucket.file(pdfPath).download();
             console.log(`generateQuestions: downloaded ${buffer.length} bytes`);
 
             // 2. Extract text
             console.log("generateQuestions: extracting text from PDF");
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const pdfMod = require("pdf-parse");
-            const pdfParse = pdfMod.default ?? pdfMod;
+            const pdfParse = require("pdf-parse");
             const data = await pdfParse(buffer);
             const text = (data.text || "").trim();
             console.log(`generateQuestions: extracted ${text.length} chars`);
@@ -477,8 +560,9 @@ ${text.slice(0, 30000)}
  */
 
 export const generateTestFromPDF = onObjectFinalized({
-    cpu: 2, // AI tasks need more power
-    memory: "1GiB"
+    cpu: 2,
+    memory: "1GiB",
+    bucket: "horecaapp-e16cf.firebasestorage.app",
 }, async (event) => {
     const filePath = event.data.name; // e.g., "pdfs/lesson1.pdf"
 
@@ -494,8 +578,8 @@ export const generateTestFromPDF = onObjectFinalized({
 
         // 3. Extract Text
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pdf = require("pdf-parse");
-        const data = await pdf(buffer);
+        const pdfParse = require("pdf-parse");
+        const data = await pdfParse(buffer);
         const extractedText = data.text;
 
         // 4. Send to AI Agent

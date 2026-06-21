@@ -8,11 +8,11 @@ interface CustomerRouteProps {
 }
 
 export default function CustomerRoute({ children }: CustomerRouteProps) {
-    const { user, loading } = useAuth();
+    const { user, currentUser, loading } = useAuth();
 
     if (loading) return <div>Loading...</div>;
     if (!user) return <Navigate to="/admin/login" replace />;
-    if (user?.role !== "customer")
+    if (currentUser?.role !== "customer")
       return <Navigate to="/admin/dashboard" replace />;
 
     return children;

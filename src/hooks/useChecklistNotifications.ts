@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, increment, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../fb/firebase';
 import { requestNotificationPermission, messaging, onMessage } from '../fb/messaging';
 import type { WorkerShift } from './useWorkerShift';
 import type { Checklist } from './useChecklists';
 
-const REMINDER_DELAY_MS = 10 * 1000; // 5 minutes
+const REMINDER_DELAY_MS = 10 * 1000; // change to 5 * 60 * 1000 for production
 
 interface Params {
   activeShift: WorkerShift | null;
@@ -13,6 +13,32 @@ interface Params {
   submitted: Set<string>;
   workerId: string | undefined;
   workerName: string | undefined;
+}
+
+async function showNotification(title: string, body: string) {
+  // Prefer service worker notification (works foreground + background)
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.ready.catch(() => null);
+    if (reg) {
+      try {
+        await reg.showNotification(title, {
+          body,
+          icon: '/smarter_horeca_1.jpg',
+          tag: 'checklist-reminder',
+          renotify: true,
+        });
+        console.log('[notifications] showNotification via SW ✓');
+      } catch (err) {
+        console.error('[notifications] SW showNotification error:', err);
+      }
+      return;
+    }
+  }
+  // Fallback for browsers without SW support
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/smarter_horeca_1.jpg' });
+    console.log('[notifications] showNotification via Notification API ✓');
+  }
 }
 
 export function useChecklistNotifications({
@@ -24,73 +50,69 @@ export function useChecklistNotifications({
 }: Params) {
   const tokenSaved = useRef(false);
   const reminderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastShiftId = useRef<string | null>(null);
 
-  // Request permission once and save FCM token to user's Firestore doc
+  // Keep live refs so the timer closure always reads current values
+  const submittedRef = useRef(submitted);
+  const checklistsRef = useRef(checklists);
+  useEffect(() => { submittedRef.current = submitted; }, [submitted]);
+  useEffect(() => { checklistsRef.current = checklists; }, [checklists]);
+
+  // Request permission once and save FCM token
   useEffect(() => {
     if (tokenSaved.current || !workerId) return;
     tokenSaved.current = true;
 
+    console.log('[notifications] requesting permission...');
     requestNotificationPermission().then((token) => {
+      console.log('[notifications] permission result, token:', token ? 'received' : 'null');
       if (!token || !workerId) return;
-      updateDoc(doc(db, 'users', workerId), { fcmToken: token }).catch(() => {
-        // user doc keyed by email — skip silently if it fails
-      });
+      updateDoc(doc(db, 'users', workerId), { fcmToken: token }).catch(() => {});
     });
 
-    // Listen for foreground messages and show a local notification
     const unsub = onMessage(messaging, (payload) => {
       const { title, body } = payload.notification ?? {};
-      if (Notification.permission === 'granted') {
-        new Notification(title ?? 'Smarter HoReCA', {
-          body: body ?? '',
-          icon: '/smarter_horeca_1.jpg',
-          tag: 'checklist-reminder',
-        });
-      }
+      showNotification(title ?? 'Smarter HoReCA', body ?? '');
     });
 
     return () => unsub();
   }, [workerId]);
 
-  // Start/restart 5-min reminder whenever shift or submissions change
+  // Start 10s/5min reminder when shift is active and checklists are incomplete
   useEffect(() => {
-    if (!activeShift) return;
-
-    const hasIncomplete = checklists.some((cl) => !submitted.has(cl.id));
-
-    // Clear any existing timer
     if (reminderTimer.current) {
       clearTimeout(reminderTimer.current);
       reminderTimer.current = null;
     }
 
-    if (!hasIncomplete) return;
-
-    // New shift — reset
-    if (lastShiftId.current !== activeShift.id) {
-      lastShiftId.current = activeShift.id;
+    if (!activeShift) {
+      console.log('[notifications] no active shift, timer not started');
+      return;
     }
 
+    const hasIncomplete = checklists.some((cl) => !submitted.has(cl.id));
+    if (!hasIncomplete) {
+      console.log('[notifications] all checklists done, timer not started');
+      return;
+    }
+
+    console.log(`[notifications] timer started — fires in ${REMINDER_DELAY_MS / 1000}s`);
+
     reminderTimer.current = setTimeout(async () => {
-      // Re-check: user might have submitted in the meantime
-      const stillIncomplete = checklists.filter((cl) => !submitted.has(cl.id));
+      // Read live values via refs — not stale closure values
+      const currentSubmitted = submittedRef.current;
+      const currentChecklists = checklistsRef.current;
+      const stillIncomplete = currentChecklists.filter((cl) => !currentSubmitted.has(cl.id));
+
+      console.log('[notifications] timer fired, incomplete:', stillIncomplete.length);
+
       if (stillIncomplete.length === 0) return;
 
       const count = stillIncomplete.length;
       const title = 'Podsjetnik — check liste';
       const body = `Imaš ${count} nedovršen${count === 1 ? 'u' : 'ih'} listu. Molimo završi ih.`;
 
-      // Show local notification (works when tab is open)
-      if (Notification.permission === 'granted') {
-        new Notification(title, {
-          body,
-          icon: '/smarter_horeca_1.jpg',
-          tag: 'checklist-reminder',
-        });
-      }
+      await showNotification(title, body);
 
-      // Persist notification to Firestore for history / manager view
       try {
         await addDoc(collection(db, 'notifications'), {
           type: 'checklist_reminder',
@@ -101,15 +123,18 @@ export function useChecklistNotifications({
           shiftId: activeShift.id,
           customerId: activeShift.customerId,
           date: activeShift.date,
-          incompleteChecklists: stillIncomplete.map((cl) => ({
-            id: cl.id,
-            title: cl.title,
-          })),
+          incompleteChecklists: stillIncomplete.map((cl) => ({ id: cl.id, title: cl.title })),
           createdAt: serverTimestamp(),
           read: false,
         });
+        // Increment remindersReceived on shift doc — used for punctuality score
+        await updateDoc(doc(db, 'shifts', activeShift.id), {
+          remindersReceived: increment(1),
+        }).catch(() => {});
+
+        console.log('[notifications] saved to Firestore ✓');
       } catch (err) {
-        console.error('useChecklistNotifications save:', err);
+        console.error('[notifications] Firestore save error:', err);
       }
     }, REMINDER_DELAY_MS);
 

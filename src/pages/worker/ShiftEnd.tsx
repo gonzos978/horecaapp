@@ -1,13 +1,66 @@
 import { useState } from "react";
-import { StopCircle, Clock, CheckCircle, AlertTriangle, Hourglass } from "lucide-react";
+import { StopCircle, Clock, CheckCircle, AlertTriangle, Hourglass, Award } from "lucide-react";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useWorkerShift } from "../../hooks/useWorkerShift";
 
+async function finalizeWorkerScore(shiftId: string, workerEmail: string) {
+    // Read shift to get scoreBreakdown + remindersReceived
+    const shiftSnap = await getDoc(doc(db, "shifts", shiftId));
+    if (!shiftSnap.exists()) return null;
+
+    const shiftData = shiftSnap.data();
+    const breakdown = shiftData.scoreBreakdown ?? {};
+    const reminders = shiftData.remindersReceived ?? 0;
+
+    // 10 pts punctuality: lose 5 per reminder, floor 0
+    const punctualityScore = Math.max(0, 10 - reminders * 5);
+    const finalScore = Math.min(100, (breakdown.checklistRate ?? 0) + (breakdown.itemRate ?? 0) + punctualityScore);
+
+    // Save final score back to shift
+    await updateDoc(doc(db, "shifts", shiftId), {
+        score: finalScore,
+        scoreBreakdown: { ...breakdown, punctualityScore, remindersReceived: reminders },
+        finalizedAt: serverTimestamp(),
+    });
+
+    // Update cumulative worker stats on user doc
+    const userSnap = await getDoc(doc(db, "users", workerEmail));
+    if (!userSnap.exists()) return finalScore;
+
+    const stats = userSnap.data().workerStats ?? {};
+    const prevAvg = stats.overallScore ?? finalScore;
+    const prevCount = stats.shiftsCount ?? 0;
+
+    // Exponential moving average (α = 0.3 — recent shifts count more)
+    const alpha = 0.3;
+    const newAvg = Math.round(prevCount === 0 ? finalScore : alpha * finalScore + (1 - alpha) * prevAvg);
+
+    // Last 7 shift scores for trend display
+    const recent: number[] = Array.isArray(stats.recentScores) ? stats.recentScores : [];
+    const recentScores = [...recent, finalScore].slice(-7);
+
+    await updateDoc(doc(db, "users", workerEmail), {
+        workerStats: {
+            overallScore: newAvg,
+            lastShiftScore: finalScore,
+            lastShiftDate: new Date().toISOString().split("T")[0],
+            shiftsCount: prevCount + 1,
+            recentScores,
+            updatedAt: serverTimestamp(),
+        },
+    });
+
+    return finalScore;
+}
+
 export default function ShiftEnd() {
-    const { currentUser } = useAuth();
+    const { currentUser, user } = useAuth();
     const { activeShift, loading, endShift } = useWorkerShift();
     const [ending, setEnding] = useState(false);
     const [done, setDone] = useState(false);
+    const [finalScore, setFinalScore] = useState<number | null>(null);
     const [note, setNote] = useState("");
     const [error, setError] = useState("");
     const [tooEarly, setTooEarly] = useState<{ h: number; m: number } | null>(null);
@@ -20,7 +73,13 @@ export default function ShiftEnd() {
         setError("");
         setTooEarly(null);
         try {
+            // Finalize score before ending shift (we still need the shift doc)
+            let score: number | null = null;
+            if (activeShift && currentUser?.email) {
+                score = await finalizeWorkerScore(activeShift.id, currentUser.email).catch(() => null);
+            }
             await endShift(note);
+            setFinalScore(score);
             setDone(true);
         } catch (err: any) {
             const msg: string = err?.message ?? "";
@@ -37,8 +96,11 @@ export default function ShiftEnd() {
     if (loading) return <div className="p-8 text-center text-slate-500">Učitavanje...</div>;
 
     if (done) {
+        const scoreColor = finalScore === null ? "slate" : finalScore >= 80 ? "emerald" : finalScore >= 50 ? "amber" : "red";
+        const scoreLabel = finalScore === null ? "" : finalScore >= 80 ? "Odličan posao!" : finalScore >= 50 ? "Solidna smjena." : "Ima prostora za napredak.";
+
         return (
-            <div className="max-w-md mx-auto animate-in fade-in duration-300">
+            <div className="max-w-md mx-auto animate-in fade-in duration-300 space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center space-y-4">
                     <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
                         <CheckCircle className="w-8 h-8 text-emerald-600" />
@@ -46,6 +108,17 @@ export default function ShiftEnd() {
                     <h2 className="text-xl font-bold text-slate-900">Smjena završena</h2>
                     <p className="text-slate-500 text-sm">Odjava u {time}. Laku noć!</p>
                 </div>
+
+                {finalScore !== null && (
+                    <div className={`bg-${scoreColor}-50 border-2 border-${scoreColor}-300 rounded-xl p-6 text-center space-y-3`}>
+                        <div className={`w-14 h-14 bg-${scoreColor}-100 rounded-full flex items-center justify-center mx-auto`}>
+                            <Award className={`w-7 h-7 text-${scoreColor}-600`} />
+                        </div>
+                        <p className={`text-4xl font-extrabold text-${scoreColor}-900`}>{finalScore}%</p>
+                        <p className={`text-sm font-semibold text-${scoreColor}-700`}>{scoreLabel}</p>
+                        <p className="text-xs text-slate-500">Score za ovu smjenu</p>
+                    </div>
+                )}
             </div>
         );
     }
