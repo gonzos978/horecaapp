@@ -213,8 +213,9 @@ export const createWorker = onCall(
             throw new HttpsError("invalid-argument", "name, email and password are required");
         }
 
-        // Determine new user's role based on who is creating
-        const newRole = requesterRole === "customer" ? "manager" : "worker";
+        // Derive role from position type
+        const MANAGER_TYPES = ["hotel_manager", "restaurant_manager", "manager"];
+        const newRole = MANAGER_TYPES.includes(type ?? "") ? "manager" : "worker";
 
         try {
             // 1. Create Firebase Auth account (admin SDK — doesn't sign out the caller)
@@ -251,8 +252,8 @@ export const createWorker = onCall(
                 },
             };
 
-            // 3. Write to users collection keyed by email (existing convention)
-            await db.collection("users").doc(email).set(userData);
+            // 3. Write to users collection keyed by Firebase Auth UID
+            await db.collection("users").doc(userRecord.uid).set(userData);
 
             return { success: true, uid: userRecord.uid };
 
@@ -264,6 +265,55 @@ export const createWorker = onCall(
             }
             if (error instanceof HttpsError) throw error;
             throw new HttpsError("internal", error?.message || "Failed to create worker");
+        }
+    }
+);
+
+/**
+ * DELETE WORKER
+ */
+export const deleteWorker = onCall(
+    { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+    async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "Login required");
+
+        const requester = await getRequester(request.auth.uid);
+        if (!requester) throw new HttpsError("permission-denied", "Requester not found");
+
+        const requesterRole = (requester.role ?? "").toLowerCase();
+        if (!["manager", "customer", "admin"].includes(requesterRole) && requester.type !== "SUPER_ADMIN") {
+            throw new HttpsError("permission-denied", "Only managers or customers can delete workers");
+        }
+
+        const { email, uid } = request.data || {};
+        if (!uid && !email) throw new HttpsError("invalid-argument", "uid or email is required");
+
+        try {
+            // Delete Firestore doc — new workers keyed by uid, old ones by email
+            if (uid) {
+                await db.collection("users").doc(uid).delete();
+                // Also try email-keyed doc for old workers
+                if (email) {
+                    try { await db.collection("users").doc(email).delete(); } catch (_) {}
+                }
+            } else {
+                await db.collection("users").doc(email).delete();
+            }
+
+            // Delete Firebase Auth account
+            if (uid) {
+                try { await admin.auth().deleteUser(uid); } catch (_) {}
+            } else if (email) {
+                try {
+                    const authUser = await admin.auth().getUserByEmail(email);
+                    await admin.auth().deleteUser(authUser.uid);
+                } catch (_) {}
+            }
+
+            return { success: true };
+        } catch (error: any) {
+            if (error instanceof HttpsError) throw error;
+            throw new HttpsError("internal", error?.message || "Failed to delete worker");
         }
     }
 );

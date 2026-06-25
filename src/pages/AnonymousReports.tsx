@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Shield, Clock, CheckCircle, AlertTriangle, Send,
-  ChevronDown, ChevronUp, RefreshCw, FileText, Loader2
+  ChevronDown, ChevronUp, RefreshCw, FileText, Loader2, Lock
 } from 'lucide-react';
 import {
   collection, addDoc, getDocs, query, where,
@@ -9,7 +9,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../fb/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import Header from '../components/Header';
+import WorkerHeader from '../components/WorkerHeader';
+import { useWorkerEligibility } from '../hooks/useWorkerEligibility';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ function fmtDate(ts: Timestamp | undefined) {
 
 function WorkerView() {
   const { user, currentUser } = useAuth();
+  const eligibility = useWorkerEligibility(currentUser?.email);
 
   const [type, setType]           = useState<ReportType>('harassment');
   const [description, setDesc]    = useState('');
@@ -137,12 +139,16 @@ function WorkerView() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      <WorkerHeader />
 
-      {/* Submit form */}
+      {/* Submit form — gated by eligibility */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Shield className="w-5 h-5 text-slate-600" />
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${eligibility.eligible ? 'bg-slate-100' : 'bg-slate-100'}`}>
+            {eligibility.eligible
+              ? <Shield className="w-5 h-5 text-slate-600" />
+              : <Lock className="w-5 h-5 text-slate-400" />
+            }
           </div>
           <div>
             <h2 className="font-bold text-slate-900">Anonimna prijava</h2>
@@ -150,54 +156,88 @@ function WorkerView() {
           </div>
         </div>
 
-        {success && (
-          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-emerald-700 text-sm font-medium">
-            <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            Prijava je uspješno poslana!
+        {eligibility.loading ? (
+          <div className="flex items-center justify-center py-8 text-slate-400 text-sm gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Provjera uslova...
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Vrsta prijave</label>
-            <select
-              value={type}
-              onChange={e => setType(e.target.value as ReportType)}
-              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-slate-50"
-            >
-              {REPORT_TYPES.map(rt => (
-                <option key={rt.value} value={rt.value}>{rt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Opis</label>
-            <textarea
-              value={description}
-              onChange={e => setDesc(e.target.value)}
-              rows={5}
-              placeholder="Opiši incident što detaljnije..."
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 bg-slate-50"
-            />
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              {error}
+        ) : !eligibility.eligible ? (
+          <div className="space-y-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-3">Zaključano — uslovi nisu ispunjeni:</p>
+              <div className="space-y-2">
+                <EligibilityRow
+                  label="Minimalno smjena"
+                  current={eligibility.shiftsCount}
+                  required={15}
+                  unit="smjena"
+                  met={eligibility.shiftsNeeded === 0}
+                />
+                <EligibilityRow
+                  label="Prosječan score"
+                  current={eligibility.overallScore}
+                  required={70}
+                  unit="%"
+                  met={eligibility.scoreNeeded === 0}
+                />
+              </div>
             </div>
-          )}
+            <button disabled className="w-full bg-slate-200 text-slate-400 rounded-xl py-3 font-semibold cursor-not-allowed">
+              Pošalji anonimno
+            </button>
+            <p className="text-xs text-slate-400 text-center">Dostupno nakon 15 smjena i prosječnog scorea ≥ 70%</p>
+          </div>
+        ) : (
+          <>
+            {success && (
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-emerald-700 text-sm font-medium">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                Prijava je uspješno poslana!
+              </div>
+            )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition"
-          >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {submitting ? 'Slanje...' : 'Pošalji anonimno'}
-          </button>
-        </form>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Vrsta prijave</label>
+                <select
+                  value={type}
+                  onChange={e => setType(e.target.value as ReportType)}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-slate-50"
+                >
+                  {REPORT_TYPES.map(rt => (
+                    <option key={rt.value} value={rt.value}>{rt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Opis</label>
+                <textarea
+                  value={description}
+                  onChange={e => setDesc(e.target.value)}
+                  rows={5}
+                  placeholder="Opiši incident što detaljnije..."
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 bg-slate-50"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {submitting ? 'Slanje...' : 'Pošalji anonimno'}
+              </button>
+            </form>
+          </>
+        )}
       </div>
 
       {/* My reports */}
@@ -317,10 +357,7 @@ function AdminView() {
 
   return (
     <div className="space-y-6">
-      <Header
-        title="Anonimne prijave"
-        subtitle={`${reports.length} ukupno`}
-      />
+      <WorkerHeader />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -431,6 +468,27 @@ function AdminView() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Eligibility row ──────────────────────────────────────────────────────────
+
+function EligibilityRow({ label, current, required, unit, met }: {
+  label: string; current: number; required: number; unit: string; met: boolean;
+}) {
+  const pct = Math.min(100, Math.round((current / required) * 100));
+  return (
+    <div>
+      <div className="flex items-center justify-between text-sm mb-1">
+        <span className="text-slate-600">{label}</span>
+        <span className={`font-semibold ${met ? 'text-emerald-600' : 'text-slate-500'}`}>
+          {current}/{required} {unit} {met ? '✓' : ''}
+        </span>
+      </div>
+      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${met ? 'bg-emerald-500' : 'bg-slate-400'}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

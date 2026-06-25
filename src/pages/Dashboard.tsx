@@ -13,7 +13,6 @@ import {
     Home as HomeIcon,
     ArrowRight,
 } from "lucide-react";
-import Header from "../components/Header";
 import AddUserModal from "../components/AddUserModal";
 import AddNotificationModal from "../components/AddNotificationModal";
 import {db} from "../fb/firebase";
@@ -233,10 +232,6 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            <Header
-                title={t("nav.dashboard")}
-                subtitle={`${currentUser?.customerName} - ${currentUser?.name} - ${currentUser?.role}`}
-            />
 
             {/* KPI cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -445,7 +440,7 @@ export default function Dashboard() {
                                 key={alert.id}
                                 className={`p-3 border rounded-lg ${
                                     severityColors[
-                                        alert.priority.toUpperCase() as keyof typeof severityColors
+                                        (alert.priority ?? "low").toUpperCase() as keyof typeof severityColors
                                         ]
                                 }`}
                             >

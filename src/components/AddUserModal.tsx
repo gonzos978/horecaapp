@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../fb/firebase";
-import { ROLE } from "../models/role";
 import { useAuth } from "../contexts/AuthContext";
 
 interface AddUserModalProps {
@@ -89,17 +88,39 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
             placeholder="Adresa"
             className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
           />
-          {currentUser?.role !== ROLE.CUSTOMER && (
-            <select
+          <select
               id="type"
               {...register("type", { required: "Obavezno polje" })}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
             >
-              <option value="waiter">Konobar</option>
-              <option value="cook">Kuhar</option>
-              <option value="housekeeping">Sobarica</option>
+              <optgroup label="Menadžment">
+                <option value="hotel_manager">Menadžer hotela</option>
+                <option value="restaurant_manager">Menadžer restorana</option>
+                <option value="manager">Menadžer</option>
+              </optgroup>
+              <optgroup label="Kuhinja">
+                <option value="executive_chef">Glavni kuvar</option>
+                <option value="cook">Kuvar</option>
+                <option value="sous_cook">Pomoćni kuvar</option>
+              </optgroup>
+              <optgroup label="Sala / Bar">
+                <option value="waiter">Konobar</option>
+                <option value="busser">Servirka</option>
+                <option value="bartender">Šanker</option>
+                <option value="mixologist">Koktel majstor</option>
+              </optgroup>
+              <optgroup label="Domaćinstvo">
+                <option value="housekeeper">Sobarica</option>
+                <option value="housekeeping">Sobarica (stari tip)</option>
+                <option value="cleaner">Higijeničarka</option>
+              </optgroup>
+              <optgroup label="Ostalo">
+                <option value="night_security">Noćni čuvar</option>
+                <option value="maintenance">Domar</option>
+                <option value="groundskeeper">Vrtlar</option>
+                <option value="spa_staff">SPA osoblje</option>
+              </optgroup>
             </select>
-          )}
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">

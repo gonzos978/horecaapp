@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
-import { GraduationCap, Play, FileText, Award, PlusCircle, Clock, Users, Pencil, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { GraduationCap, Play, FileText, Award, PlusCircle, Clock, Users, Pencil, Trash2, CheckCircle, XCircle, ChevronRight, RotateCcw } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
-import Header from '../components/Header';
 import { getDownloadURL, getStorage, ref, uploadBytes, listAll, deleteObject } from "firebase/storage";
-import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc, addDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "../fb/firebase.ts";
-import { getAuth } from "firebase/auth";
 import { useAuth } from '../contexts/AuthContext';
+import WorkerHeader from '../components/WorkerHeader';
 
 const ROLE_LABELS: Record<string, string> = {
     waiter:             'Konobar',
@@ -32,9 +31,12 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function Training() {
     const { t, language } = useLanguage();
-    const { currentUser } = useAuth();
+    const { currentUser, user: authUser } = useAuth();
     const navigate = useNavigate();
     const isManager = ["manager", "MANAGER", "customer", "CUSTOMER"].includes(currentUser?.role ?? "");
+    const isWorker = currentUser?.role?.toLowerCase() === "worker";
+    // For workers, derive their role key from their type (e.g. "waiter" → "waiter")
+    const workerRoleKey = isWorker ? (currentUser?.type ?? null) : null;
 
     const [positions, setPositions] = useState<any[]>([]);
     const [modules, setModules] = useState<any[]>([]);
@@ -45,15 +47,102 @@ export default function Training() {
     const [quizFilter, setQuizFilter] = useState<string>("all");
     const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
     const [deleteQuizTarget, setDeleteQuizTarget] = useState<any | null>(null);
+    // last result per quizId for the current user
+    const [myResults, setMyResults] = useState<Record<string, any>>({});
 
     const [uploading, setUploading] = useState(false);
     const [workerType, setWorkerType] = useState("");
     const [file, setFile] = useState<File | null>(null);
     const [fileInputKey, setFileInputKey] = useState(Date.now());
 
-    const auth = getAuth();
-    const user = auth.currentUser;
-    const userId = user?.uid;
+    // ── Quiz taking ────────────────────────────────────────────────────────
+    const PASS_PERCENT = 80;
+    const [activeQuiz, setActiveQuiz] = useState<any | null>(null);
+    const [qIndex, setQIndex] = useState(0);
+    const [answers, setAnswers] = useState<(number | null)[]>([]);
+    const [selected, setSelected] = useState<number | null>(null);
+    const [timeLeft, setTimeLeft] = useState(0);
+    const [quizDone, setQuizDone] = useState(false);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const startQuiz = (quiz: any) => {
+        const r = myResults[quiz.id];
+        const completedMs = r?.completedAt?.seconds ? r.completedAt.seconds * 1000 : null;
+        if (completedMs && Date.now() - completedMs < 24 * 60 * 60 * 1000) return;
+        setActiveQuiz(quiz);
+        setQIndex(0);
+        setAnswers([]);
+        setSelected(null);
+        setTimeLeft(quiz.timePerQuestion ?? 60);
+        setQuizDone(false);
+    };
+
+    const closeQuiz = () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setActiveQuiz(null);
+        setQuizDone(false);
+    };
+
+    const commitAnswer = (idx: number | null) => {
+        if (!activeQuiz) return;
+        const next = [...answers, idx];
+        setAnswers(next);
+        if (timerRef.current) clearInterval(timerRef.current);
+
+        const nextIdx = qIndex + 1;
+        if (nextIdx >= activeQuiz.questions.length) {
+            setQuizDone(true);
+            // calculate final score and save
+            const correct = next.filter((a, i) => a === activeQuiz.questions[i]?.correct).length;
+            const total = activeQuiz.questions.length;
+            const pct = Math.round((correct / total) * 100);
+            const didPass = pct >= PASS_PERCENT;
+            addDoc(collection(db, "quiz_results"), {
+                userId: authUser?.uid ?? null,
+                userEmail: authUser?.email ?? null,
+                userName: currentUser?.name ?? authUser?.email ?? "Nepoznat",
+                userRole: currentUser?.type ?? currentUser?.role ?? null,
+                quizId: activeQuiz.id,
+                quizTitle: activeQuiz.title,
+                quizRole: activeQuiz.role,
+                score: correct,
+                total,
+                percentage: pct,
+                passed: didPass,
+                completedAt: serverTimestamp(),
+            }).then(() => { console.log("Quiz result saved"); loadMyResults(); }).catch(err => console.error("Failed to save quiz result:", err));
+        } else {
+            setQIndex(nextIdx);
+            setSelected(null);
+            setTimeLeft(activeQuiz.timePerQuestion ?? 60);
+        }
+    };
+
+    // countdown
+    useEffect(() => {
+        if (!activeQuiz || quizDone) return;
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(() => {
+            setTimeLeft(t => {
+                if (t <= 1) {
+                    clearInterval(timerRef.current!);
+                    commitAnswer(null); // time up = wrong
+                    return 0;
+                }
+                return t - 1;
+            });
+        }, 1000);
+        return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    }, [qIndex, activeQuiz, quizDone]);
+
+    const scoreCorrect = activeQuiz
+        ? answers.filter((a, i) => a === activeQuiz.questions[i]?.correct).length
+        : 0;
+    const passed = activeQuiz
+        ? (scoreCorrect / activeQuiz.questions.length) * 100 >= PASS_PERCENT
+        : false;
+
+    const userId = authUser?.uid;
 
     const workerTypes = [
         { value: "konobar", label: "Konobar" },
@@ -70,6 +159,10 @@ export default function Training() {
         loadPublicModules();
         loadQuizzes();
     }, []);
+
+    useEffect(() => {
+        if (authUser?.email) loadMyResults();
+    }, [authUser?.email, authUser?.uid]);
 
     useEffect(() => {
         if (userId) loadPrivateModules();
@@ -148,6 +241,30 @@ export default function Training() {
         }
     };
 
+    const loadMyResults = async () => {
+        if (!authUser) return;
+        try {
+            // fetch by email AND by uid (covers old docs saved before email fix)
+            const queries = [];
+            if (authUser.email) queries.push(getDocs(query(collection(db, "quiz_results"), where("userEmail", "==", authUser.email))));
+            if (authUser.uid)   queries.push(getDocs(query(collection(db, "quiz_results"), where("userId",    "==", authUser.uid))));
+
+            const snaps = await Promise.all(queries);
+            const seen = new Set<string>();
+            const all: any[] = [];
+            snaps.forEach(snap => snap.docs.forEach(d => {
+                if (!seen.has(d.id)) { seen.add(d.id); all.push({ id: d.id, ...d.data() }); }
+            }));
+
+            all.sort((a, b) => (b.completedAt?.seconds ?? 0) - (a.completedAt?.seconds ?? 0));
+            const map: Record<string, any> = {};
+            all.forEach(r => { if (!map[r.quizId]) map[r.quizId] = r; });
+            setMyResults(map);
+        } catch (err) {
+            console.error("Error loading my results:", err);
+        }
+    };
+
     const uploadInstruction = async () => {
         if (!file || !workerType) { alert("Izaberite tip radnika i PDF fajl"); return; }
         if (!file.name.toLowerCase().endsWith(".pdf")) { alert("Dozvoljen je samo PDF"); return; }
@@ -190,10 +307,116 @@ export default function Training() {
         } catch { alert("Greška pri brisanju kviza."); }
     };
 
-    const filteredQuizzes = quizFilter === "all" ? quizzes : quizzes.filter(q => q.role === quizFilter);
+    const filteredQuizzes = workerRoleKey
+        ? quizzes.filter(q => q.role === workerRoleKey)
+        : quizFilter === "all" ? quizzes : quizzes.filter(q => q.role === quizFilter);
 
     return (
         <div className="space-y-6">
+        <WorkerHeader />
+
+        {/* ── QUIZ MODAL ── */}
+        {activeQuiz && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+
+                    {!quizDone ? (() => {
+                        const q = activeQuiz.questions[qIndex];
+                        const total = activeQuiz.questions.length;
+                        const pct = Math.round((timeLeft / (activeQuiz.timePerQuestion ?? 60)) * 100);
+                        return (
+                            <div className="p-6 space-y-5">
+                                {/* header */}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{activeQuiz.title}</span>
+                                    <span className="text-xs font-bold text-slate-400">{qIndex + 1} / {total}</span>
+                                </div>
+
+                                {/* progress bar */}
+                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-600 rounded-full transition-all duration-300" style={{ width: `${((qIndex) / total) * 100}%` }} />
+                                </div>
+
+                                {/* timer */}
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full transition-all duration-1000 ${pct > 50 ? 'bg-emerald-500' : pct > 20 ? 'bg-amber-400' : 'bg-red-500'}`}
+                                            style={{ width: `${pct}%` }}
+                                        />
+                                    </div>
+                                    <span className={`text-sm font-bold w-8 text-right ${pct <= 20 ? 'text-red-500' : 'text-slate-600'}`}>{timeLeft}s</span>
+                                </div>
+
+                                {/* question */}
+                                <p className="text-lg font-bold text-slate-900 leading-snug">{q.question}</p>
+
+                                {/* options */}
+                                <div className="space-y-2">
+                                    {q.options.map((opt: string, i: number) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => { setSelected(i); commitAnswer(i); }}
+                                            disabled={selected !== null}
+                                            className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm font-medium
+                                                ${selected === i ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50 text-slate-700'}
+                                                disabled:cursor-not-allowed`}
+                                        >
+                                            <span className="font-bold mr-2 text-slate-400">{String.fromCharCode(65 + i)}.</span>{opt}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <button onClick={closeQuiz} className="w-full text-center text-xs text-slate-400 hover:text-slate-600 pt-1">Odustani</button>
+                            </div>
+                        );
+                    })() : (
+                        /* Results screen */
+                        <div className="p-8 text-center space-y-5">
+                            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto ${passed ? 'bg-emerald-100' : 'bg-red-100'}`}>
+                                {passed
+                                    ? <CheckCircle className="w-10 h-10 text-emerald-600" />
+                                    : <XCircle className="w-10 h-10 text-red-500" />}
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900">{passed ? 'Položio/la si! 🎉' : 'Nisi položio/la'}</h2>
+                                <p className="text-slate-500 mt-1 text-sm">{activeQuiz.title}</p>
+                            </div>
+
+                            <div className="bg-slate-50 rounded-xl p-4 space-y-1">
+                                <p className="text-4xl font-black text-slate-900">{scoreCorrect} / {activeQuiz.questions.length}</p>
+                                <p className="text-sm text-slate-500">tačnih odgovora</p>
+                                <p className={`text-sm font-semibold mt-1 ${passed ? 'text-emerald-600' : 'text-red-500'}`}>
+                                    {passed ? `✓ Položio/la si (${PASS_PERCENT}% prolazna ocjena)` : `✗ Potrebno ${PASS_PERCENT}% tačnih za prolaz`}
+                                </p>
+                            </div>
+
+                            {/* per-question breakdown */}
+                            <div className="text-left space-y-1 max-h-48 overflow-y-auto pr-1">
+                                {activeQuiz.questions.map((q: any, i: number) => {
+                                    const correct = answers[i] === q.correct;
+                                    return (
+                                        <div key={i} className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${correct ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>
+                                            {correct ? <CheckCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> : <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />}
+                                            <span className="leading-tight">{q.question}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="flex gap-3 pt-1">
+                                <button onClick={() => startQuiz(activeQuiz)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                    <RotateCcw className="w-4 h-4" /> Pokušaj ponovo
+                                </button>
+                                <button onClick={closeQuiz} className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">
+                                    Zatvori
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
             {/* Delete PDF confirm */}
             {deleteTarget && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -222,9 +445,7 @@ export default function Training() {
                 </div>
             )}
 
-            <div className="flex items-start justify-between gap-4">
-                <Header title={t('training.title')} subtitle={`${positions.length} pozicija • ${getAllModules().length} modula • ${quizzes.length} kvizova`} />
-                {isManager && (
+            <div className="flex items-start justify-between gap-4">`n                {isManager && (
                     <button onClick={() => navigate('/app/create-quiz')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold flex-shrink-0 mt-1">
                         <PlusCircle className="w-4 h-4" />
                         Kreiraj kviz
@@ -256,8 +477,8 @@ export default function Training() {
                         <FileText className="w-5 h-5 text-blue-600" />
                         Kvizovi ({quizzes.length})
                     </h3>
-                    {/* Role filter */}
-                    <div className="flex gap-2 flex-wrap">
+                    {/* Role filter — hidden for workers */}
+                    {!isWorker && <div className="flex gap-2 flex-wrap">
                         {["all", ...Object.keys(ROLE_LABELS)].map(r => (
                             <button
                                 key={r}
@@ -267,7 +488,7 @@ export default function Training() {
                                 {r === "all" ? "Svi" : ROLE_LABELS[r]}
                             </button>
                         ))}
-                    </div>
+                    </div>}
                 </div>
 
                 {filteredQuizzes.length === 0 ? (
@@ -317,6 +538,46 @@ export default function Training() {
                                         ~{Math.round(((quiz.timePerQuestion ?? 60) * (quiz.questions?.length ?? 0)) / 60)} min
                                     </span>
                                 </div>
+
+                                {(() => {
+                                    const r = myResults[quiz.id];
+                                    if (!r) return null;
+                                    const completedMs = r.completedAt?.seconds ? r.completedAt.seconds * 1000 : null;
+                                    const cooldownMs = 24 * 60 * 60 * 1000;
+                                    const nextAllowed = completedMs ? completedMs + cooldownMs : null;
+                                    const remaining = nextAllowed ? nextAllowed - Date.now() : 0;
+                                    const locked = remaining > 0;
+                                    const hrs = Math.floor(remaining / 3600000);
+                                    const mins = Math.floor((remaining % 3600000) / 60000);
+                                    return (
+                                        <div className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                            <span>{r.passed ? '✓ Položio/la' : '✗ Nije položio/la'}</span>
+                                            <span>{r.score}/{r.total} — {r.percentage}%</span>
+                                            {locked && <span className="ml-2 text-slate-400">⏳ {hrs}h {mins}m</span>}
+                                        </div>
+                                    );
+                                })()}
+
+                                {(() => {
+                                    const r = myResults[quiz.id];
+                                    const completedMs = r?.completedAt?.seconds ? r.completedAt.seconds * 1000 : null;
+                                    const remaining = completedMs ? (completedMs + 24 * 60 * 60 * 1000) - Date.now() : 0;
+                                    const locked = remaining > 0;
+                                    const hrs = Math.floor(remaining / 3600000);
+                                    const mins = Math.floor((remaining % 3600000) / 60000);
+                                    return locked ? (
+                                        <div className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-400 rounded-lg text-sm font-semibold cursor-not-allowed">
+                                            <Clock className="w-4 h-4" /> Dostupno za {hrs}h {mins}m
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => startQuiz(quiz)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors"
+                                        >
+                                            <ChevronRight className="w-4 h-4" /> {r ? 'Ponovi test' : 'Započni test'}
+                                        </button>
+                                    );
+                                })()}
                             </div>
                         ))}
                     </div>

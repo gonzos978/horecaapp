@@ -1,6 +1,5 @@
 import { Globe, Bell, Palette, Save } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import Header from '../components/Header';
 
 export default function Settings() {
   const { t, language, setLanguage } = useLanguage();
@@ -15,7 +14,6 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <Header title={t('settings.title')} subtitle="Prilagodite sistem prema vašim potrebama" />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

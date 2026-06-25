@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../fb/firebase';
 
 interface EligibilityResult {
@@ -12,7 +12,7 @@ interface EligibilityResult {
   scoreNeeded: number;
 }
 
-const MIN_SHIFTS = 30;
+const MIN_SHIFTS = 15;
 const MIN_SCORE  = 70;
 
 export function useWorkerEligibility(email: string | undefined): EligibilityResult {
@@ -23,8 +23,8 @@ export function useWorkerEligibility(email: string | undefined): EligibilityResu
   useEffect(() => {
     if (!email) { setLoading(false); return; }
 
-    getDoc(doc(db, 'users', email)).then((snap) => {
-      const stats = snap.data()?.workerStats ?? {};
+    getDocs(query(collection(db, 'users'), where('email', '==', email))).then((snap) => {
+      const stats = snap.docs[0]?.data()?.workerStats ?? {};
       setShiftsCount(stats.shiftsCount ?? 0);
       setOverallScore(stats.overallScore ?? 0);
     }).catch(() => {}).finally(() => setLoading(false));

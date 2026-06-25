@@ -4,7 +4,6 @@ import { collection, addDoc, doc, getDoc, setDoc, serverTimestamp } from "fireba
 import { db } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import { Plus, Trash2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Clock, Loader2 } from "lucide-react";
-import Header from "../../components/Header";
 
 const ROLES = [
   { value: "waiter",       label: "Konobar",   icon: "🍽️" },
@@ -149,10 +148,6 @@ export default function CreateQuiz() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <Header
-        title={editId ? "Uredi Kviz" : "Kreiraj Kviz"}
-        subtitle={editId ? "Izmijeni pitanja i odgovore" : "Ručno kreiranje pitanja i odgovora"}
-      />
 
       {/* Meta */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">

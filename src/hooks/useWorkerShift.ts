@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
     collection, query, where, getDocs, addDoc,
-    updateDoc, doc, serverTimestamp, Timestamp, setDoc
+    updateDoc, doc, serverTimestamp, Timestamp, setDoc, onSnapshot
 } from "firebase/firestore";
 import { db } from "../fb/firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -23,43 +23,67 @@ export interface WorkerShift {
 export function useWorkerShift() {
     const { user, currentUser } = useAuth();
     const [activeShift, setActiveShift] = useState<WorkerShift | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
 
     const today = new Date().toISOString().split("T")[0];
 
-    // Fetch today's active shift for this worker
+    // Real-time listener for today's active shift
+    useEffect(() => {
+        if (!user?.uid) {
+            setActiveShift(null);
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+
+        const q = query(
+            collection(db, "shifts"),
+            where("workerId", "==", user.uid),
+            where("status", "==", "active")
+        );
+
+        const unsub = onSnapshot(q, (snap) => {
+            const todayDoc = snap.docs.find(d => d.data().date === today);
+            setActiveShift(todayDoc ? { id: todayDoc.id, ...todayDoc.data() } as WorkerShift : null);
+            setLoading(false);
+        }, (err) => {
+            console.error("useWorkerShift onSnapshot:", err);
+            setLoading(false);
+        });
+
+        return () => unsub();
+    }, [user?.uid]);
+
     const fetchActiveShift = async () => {
         if (!user?.uid) return;
-        setLoading(true);
-        try {
-            // Single-field query avoids composite index requirement
-            const q = query(
-                collection(db, "shifts"),
-                where("workerId", "==", user.uid),
-                where("status", "==", "active")
-            );
-            const snap = await getDocs(q);
-            // Filter client-side for today's date
-            const todayDoc = snap.docs.find(d => d.data().date === today);
-            if (todayDoc) {
-                setActiveShift({ id: todayDoc.id, ...todayDoc.data() } as WorkerShift);
-            } else {
-                setActiveShift(null);
-            }
-        } catch (err) {
-            console.error("useWorkerShift fetchActiveShift:", err);
-        } finally {
-            setLoading(false);
-        }
+        const q = query(
+            collection(db, "shifts"),
+            where("workerId", "==", user.uid),
+            where("status", "==", "active")
+        );
+        const snap = await getDocs(q);
+        const todayDoc = snap.docs.find(d => d.data().date === today);
+        setActiveShift(todayDoc ? { id: todayDoc.id, ...todayDoc.data() } as WorkerShift : null);
     };
-
-    useEffect(() => {
-        fetchActiveShift();
-    }, [user?.uid]);
 
     // Start a new shift
     const startShift = async (): Promise<WorkerShift> => {
         if (!user?.uid || !currentUser) throw new Error("Not authenticated");
+
+        // Try to get geolocation (best-effort, won't block shift start)
+        let geoLocation: { lat: number; lng: number; accuracy: number } | null = null;
+        try {
+            const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
+            );
+            geoLocation = {
+                lat:      pos.coords.latitude,
+                lng:      pos.coords.longitude,
+                accuracy: Math.round(pos.coords.accuracy),
+            };
+        } catch {
+            // Permission denied or unavailable — continue without location
+        }
 
         const payload = {
             workerId: user.uid,
@@ -72,6 +96,7 @@ export function useWorkerShift() {
             endTime: null,
             status: "active" as const,
             endNotes: "",
+            ...(geoLocation ? { startLocation: geoLocation } : {}),
         };
 
         const ref = await addDoc(collection(db, "shifts"), payload);

@@ -14,8 +14,10 @@ service cloud.firestore {
       return request.auth != null;
     }
     function getUserData() {
-      // User docs are keyed by email (set by AddUserModal), not by UID
-      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+      // Try UID-keyed doc first (new workers), fall back to email-keyed doc (old workers/managers)
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
     }
     function isSuperAdmin() {
       return isSignedIn()
@@ -55,37 +57,36 @@ service cloud.firestore {
           isSuperAdmin()
           ||
           (
-            exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+            exists(/databases/$(database)/documents/users/$(request.auth.uid))
             && (
               // Admin creates customers
               (
                 request.resource.data.role == "customer"
-                && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.isAdmin == true
+                && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
               )
               ||
               // Customer creates managers
               (
                 request.resource.data.role in ["manager", "MANAGER"]
-                && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role in ["customer", "CUSTOMER"]
+                && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["customer", "CUSTOMER"]
               )
               ||
               // Manager creates workers
               (
                 request.resource.data.role in ["worker", "WORKER"]
-                && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role in ["manager", "MANAGER"]
+                && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["manager", "MANAGER"]
               )
             )
           )
         );
       allow update: if request.auth != null &&
         (
-          request.auth.token.email == userId ||
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role in ["admin", "manager", "customer"]
+          request.auth.uid == userId ||
+          userId == request.auth.token.email ||
+          getUserData().role in ["admin", "manager", "customer", "MANAGER", "CUSTOMER"]
         );
-      allow delete: if request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
-          in ["admin", "customer", "manager"]
-      );
+      allow delete: if request.auth != null &&
+        getUserData().role in ["admin", "customer", "manager", "CUSTOMER", "MANAGER"];
     }
 
     // =====================================================
@@ -109,19 +110,19 @@ service cloud.firestore {
     match /menu_items/{docId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
-        && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
-        && get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
           in ["worker", "manager", "customer", "admin"];
       allow update: if request.auth != null
         && (
           resource.data.ownerId == request.auth.uid
-          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
             in ["manager", "admin"]
         );
       allow delete: if request.auth != null
         && (
           resource.data.ownerId == request.auth.uid
-          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
             in ["manager", "customer", "admin"]
         );
     }
@@ -132,13 +133,13 @@ service cloud.firestore {
     match /workingDays/{docId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
-        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.email == request.auth.uid
         && (
           request.resource.data.role == "worker"
           || request.resource.data.role == "manager"
         );
       allow update: if request.auth != null
-        && resource.data.email == request.auth.token.email;
+        && resource.data.email == request.auth.uid;
       allow delete: if request.auth != null
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
@@ -150,11 +151,11 @@ service cloud.firestore {
     match /notifications/{docId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
-        && exists(/databases/$(database)/documents/users/$(request.auth.token.email))
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && (
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "customer"
-          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "manager"
-          || get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == "worker"
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "customer"
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "manager"
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "worker"
         );
       allow update: if request.auth != null
         && resource.data.creatorId == request.auth.uid;
@@ -304,6 +305,57 @@ service cloud.firestore {
     match /ultimate_tests/{testId} {
       allow read: if true;
       allow write: if isSignedIn();
+    }
+
+    // =====================================================
+    // QUIZ RESULTS (worker test performance)
+    // =====================================================
+    match /quiz_results/{resultId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // =====================================================
+    // REQUESTS (vacation / sick-day requests from workers)
+    // Workers can create their own requests and read them.
+    // Managers/Customers can read all requests for their company and update (approve/reject).
+    // =====================================================
+    // =====================================================
+    // WORKER NOTIFICATIONS (approval/rejection from manager)
+    // =====================================================
+    match /workerNotifications/{notifId} {
+      // Manager writes notification on decision; workers write when accepting/declining replacement
+      allow create: if isSignedIn();
+
+      // Worker reads and marks their own as read
+      allow read, update: if isSignedIn()
+                          && resource.data.workerId == request.auth.uid;
+    }
+
+    match /requests/{requestId} {
+      allow create: if isSignedIn()
+                    && (
+                      request.resource.data.workerId == request.auth.uid
+                      || request.resource.data.replacementWorkerId == request.auth.uid
+                    );
+
+      allow read: if isSignedIn()
+                  && (
+                    resource.data.workerId == request.auth.uid
+                    || resource.data.replacementWorkerId == request.auth.uid
+                    || (isManagerOrCustomer()
+                        && resource.data.customerId == getUserData().customerId)
+                    || isSuperAdmin()
+                  );
+
+      allow update: if isSignedIn()
+                    && (
+                      // Manager/customer approves or rejects
+                      (isManagerOrCustomer()
+                       && resource.data.customerId == getUserData().customerId)
+                      // Replacement worker accepts/declines their part
+                      || resource.data.replacementWorkerId == request.auth.uid
+                      || isSuperAdmin()
+                    );
     }
   }
 }

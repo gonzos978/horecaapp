@@ -12,17 +12,9 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../fb/firebase";
 
 import {
-    ArrowLeft,
-    Save,
-    Trash2,
-    Upload,
-    Loader2,
-    User,
-    Mail,
-    Phone,
-    MapPin,
-    Briefcase,
-    XCircle
+    ArrowLeft, Save, Trash2, Upload, Loader2,
+    User, Mail, Phone, MapPin, Briefcase, XCircle,
+    Clock, Power, Thermometer, Palmtree, Users
 } from "lucide-react";
 
 interface FormValues {
@@ -32,6 +24,19 @@ interface FormValues {
     type: string;
     phone: string;
     address: string;
+    startWorkAt: string;
+    stopWorkAt: string;
+    active: boolean;
+    sickDaysTotal: number;
+    sickDaysUsed: number;
+    sickDaysNote: string;
+    vacationTotal: number;
+    vacationUsed: number;
+    vacationNote: string;
+    replacementReplaces: string;
+    replacementReplacedBy: string;
+    replacementPeriod: string;
+    replacementNote: string;
 }
 
 export default function EditWorker() {
@@ -64,6 +69,19 @@ export default function EditWorker() {
         type: "",
         phone: "",
         address: "",
+        startWorkAt: "",
+        stopWorkAt: "",
+        active: true,
+        sickDaysTotal: 0,
+        sickDaysUsed: 0,
+        sickDaysNote: "",
+        vacationTotal: 0,
+        vacationUsed: 0,
+        vacationNote: "",
+        replacementReplaces: "",
+        replacementReplacedBy: "",
+        replacementPeriod: "",
+        replacementNote: "",
     });
 
     const handlePhotoUpload = async (
@@ -127,7 +145,6 @@ export default function EditWorker() {
     useEffect(() => {
 
         if (worker) {
-
             setForm({
                 name: worker.name || "",
                 email: worker.email || "",
@@ -135,18 +152,33 @@ export default function EditWorker() {
                 type: worker.type || "",
                 phone: worker.phone || "",
                 address: worker.address || "",
+                startWorkAt: worker.startWorkAt || "",
+                stopWorkAt: worker.stopWorkAt || "",
+                active: worker.active !== false,
+                sickDaysTotal: worker.sickDays?.total ?? 0,
+                sickDaysUsed: worker.sickDays?.used ?? 0,
+                sickDaysNote: worker.sickDays?.note || "",
+                vacationTotal: worker.vacation?.total ?? 0,
+                vacationUsed: worker.vacation?.used ?? 0,
+                vacationNote: worker.vacation?.note || "",
+                replacementReplaces: worker.replacement?.replaces || "",
+                replacementReplacedBy: worker.replacement?.replacedBy || "",
+                replacementPeriod: worker.replacement?.period || "",
+                replacementNote: worker.replacement?.note || "",
             });
         }
 
     }, [worker]);
 
     const handleChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
     ) => {
-
+        const { name, value, type } = e.target;
         setForm({
             ...form,
-            [e.target.name]: e.target.value
+            [name]: type === "checkbox" ? (e.target as HTMLInputElement).checked
+                   : type === "number"  ? Number(value)
+                   : value
         });
     };
 
@@ -170,13 +202,30 @@ export default function EditWorker() {
                 );
             }
 
+            const { sickDaysTotal, sickDaysUsed, sickDaysNote,
+                    vacationTotal, vacationUsed, vacationNote,
+                    replacementReplaces, replacementReplacedBy, replacementPeriod, replacementNote,
+                    startWorkAt, stopWorkAt, active,
+                    ...baseForm } = form;
+
             await updateDoc(doc(db, "users", worker.id), {
-                ...form,
-                customerId: worker.customerId,
+                ...baseForm,
+                startWorkAt,
+                stopWorkAt,
+                active,
+                sickDays: { total: sickDaysTotal, used: sickDaysUsed, note: sickDaysNote },
+                vacation:  { total: vacationTotal,  used: vacationUsed,  note: vacationNote  },
+                replacement: {
+                    replaces:    replacementReplaces,
+                    replacedBy:  replacementReplacedBy,
+                    period:      replacementPeriod,
+                    note:        replacementNote,
+                },
+                customerId:   worker.customerId,
                 customerName: worker.customerName,
-                createdAt: worker.createdAt,
-                isAdmin: worker.isAdmin || false,
-                photoURL: uploadedPhotoURL,
+                createdAt:    worker.createdAt,
+                isAdmin:      worker.isAdmin || false,
+                photoURL:     uploadedPhotoURL,
             });
 
             navigate(`/app/workers/${encodeURIComponent(worker.id)}`, {
@@ -451,6 +500,79 @@ export default function EditWorker() {
                         />
                     </div>
                 </div>
+
+                {/* RADNO VRIJEME I STATUS */}
+                <div className="bg-white rounded-3xl shadow-xl p-8">
+                    <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+                        <Clock size={18} className="text-blue-500" /> Zaposlenje i status
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <InputField icon={<Clock size={18} />} label="Datum zaposlenja" name="startWorkAt" value={form.startWorkAt} onChange={handleChange} type="date" />
+                        <InputField icon={<Clock size={18} />} label="Datum prestanka rada" name="stopWorkAt" value={form.stopWorkAt} onChange={handleChange} type="date" />
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-600 mb-2">Status</label>
+                            <label className="flex items-center gap-3 cursor-pointer p-4 rounded-2xl border border-slate-300 bg-slate-50 hover:bg-slate-100 transition">
+                                <Power size={18} className={form.active ? "text-emerald-500" : "text-slate-400"} />
+                                <span className="font-medium text-slate-700">{form.active ? "Aktivan" : "Neaktivan"}</span>
+                                <div className="ml-auto relative">
+                                    <input type="checkbox" name="active" checked={form.active} onChange={handleChange} className="sr-only" />
+                                    <div className={`w-12 h-6 rounded-full transition-colors ${form.active ? "bg-emerald-500" : "bg-slate-300"}`}>
+                                        <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${form.active ? "translate-x-6" : "translate-x-0.5"}`} />
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                {/* BOLOVANJE */}
+                <div className="bg-white rounded-3xl shadow-xl p-8">
+                    <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+                        <Thermometer size={18} className="text-red-500" /> Bolovanje
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <InputField icon={<Thermometer size={18} />} label="Ukupno dana" name="sickDaysTotal" value={String(form.sickDaysTotal)} onChange={handleChange} type="number" />
+                        <InputField icon={<Thermometer size={18} />} label="Iskorišteno" name="sickDaysUsed" value={String(form.sickDaysUsed)} onChange={handleChange} type="number" />
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-600 mb-2">Napomena</label>
+                            <textarea name="sickDaysNote" value={form.sickDaysNote} onChange={handleChange} rows={2}
+                                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-slate-200 resize-none" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* GODIŠNJI ODMOR */}
+                <div className="bg-white rounded-3xl shadow-xl p-8">
+                    <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+                        <Palmtree size={18} className="text-amber-500" /> Godišnji odmor
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <InputField icon={<Palmtree size={18} />} label="Ukupno dana" name="vacationTotal" value={String(form.vacationTotal)} onChange={handleChange} type="number" />
+                        <InputField icon={<Palmtree size={18} />} label="Iskorišteno" name="vacationUsed" value={String(form.vacationUsed)} onChange={handleChange} type="number" />
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-600 mb-2">Napomena</label>
+                            <textarea name="vacationNote" value={form.vacationNote} onChange={handleChange} rows={2}
+                                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-slate-200 resize-none" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* ZAMJENA */}
+                <div className="bg-white rounded-3xl shadow-xl p-8">
+                    <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+                        <Users size={18} className="text-violet-500" /> Zamjena
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <InputField icon={<Users size={18} />} label="Zamjenjuje (ime radnika)" name="replacementReplaces" value={form.replacementReplaces} onChange={handleChange} />
+                        <InputField icon={<Users size={18} />} label="Zamjenjuje ga/je (ime radnika)" name="replacementReplacedBy" value={form.replacementReplacedBy} onChange={handleChange} />
+                        <InputField icon={<Clock size={18} />} label="Period zamjene (npr. 01.07 - 15.07)" name="replacementPeriod" value={form.replacementPeriod} onChange={handleChange} />
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-600 mb-2">Napomena</label>
+                            <textarea name="replacementNote" value={form.replacementNote} onChange={handleChange} rows={2}
+                                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-slate-200 resize-none" />
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* DELETE MODAL */}
@@ -521,45 +643,18 @@ export default function EditWorker() {
 }
 
 /* INPUT FIELD */
-function InputField({
-                        icon,
-                        label,
-                        name,
-                        value,
-                        onChange
-                    }: any) {
-
+function InputField({ icon, label, name, value, onChange, type = "text" }: any) {
     return (
         <div>
-            <label className="block text-sm font-semibold text-slate-600 mb-2">
-                {label}
-            </label>
-
+            <label className="block text-sm font-semibold text-slate-600 mb-2">{label}</label>
             <div className="relative">
-
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    {icon}
-                </div>
-
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
                 <input
+                    type={type}
                     name={name}
                     value={value}
                     onChange={onChange}
-                    className="
-                        w-full
-                        pl-12
-                        pr-4
-                        py-4
-                        rounded-2xl
-                        border
-                        border-slate-300
-                        bg-slate-50
-                        focus:outline-none
-                        focus:ring-4
-                        focus:ring-slate-200
-                        focus:border-slate-500
-                        transition
-                    "
+                    className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-300 bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-200 focus:border-slate-500 transition"
                 />
             </div>
         </div>

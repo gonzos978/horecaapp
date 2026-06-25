@@ -20,7 +20,6 @@ import {
     updateDoc
 } from 'firebase/firestore';
 
-import Header from '../components/Header';
 
 type Task = {
     task: string;
@@ -277,10 +276,6 @@ export default function Checklists() {
     return (
         <div className="space-y-6">
 
-            <Header
-                title={t('checklist.title')}
-                subtitle={`${checklists.length} aktivnih listi`}
-            />
 
             {/* ADD NEW */}
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-5">

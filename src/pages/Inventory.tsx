@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Package, AlertTriangle, CheckCircle, TrendingDown } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import Header from '../components/Header';
 
 export default function Inventory() {
   const { t } = useLanguage();
@@ -37,7 +36,6 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6">
-      <Header title={t('artikli.title')} subtitle={`${items.length} stavki`} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">

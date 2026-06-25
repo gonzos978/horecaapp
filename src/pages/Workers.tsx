@@ -7,7 +7,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { db } from '../fb/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
-import Header from '../components/Header';
 
 export default function Workers() {
     const { t } = useLanguage();
@@ -63,10 +62,6 @@ export default function Workers() {
 
     return (
         <div className="space-y-6">
-            <Header
-                title={t('workers.title')}
-                subtitle={`${workers.length} ${t('workers.title').toLowerCase()}`}
-            />
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                 {[

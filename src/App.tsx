@@ -31,6 +31,8 @@ import Settings from "./pages/Settings";
 import AnonymousReports from "./pages/AnonymousReports";
 import WorkerStats from "./pages/WorkerStats";
 import WorkerProfile from "./pages/WorkerProfile";
+import MyProfile from "./pages/MyProfile";
+import Requests from "./pages/Requests";
 import WaiterApp from "./pages/pwa/WaiterApp";
 import CookApp from "./pages/pwa/CookApp";
 import HousekeeperApp from "./pages/pwa/HousekeeperApp";
@@ -199,6 +201,8 @@ export default function App() {
                         <Route path="anonymousReports" element={<AnonymousReports />} />
                         <Route path="workerStats" element={<WorkerStats />} />
                         <Route path="workerProfile" element={<WorkerProfile />} />
+                        <Route path="myProfile" element={<MyProfile />} />
+                        <Route path="requests" element={<Requests />} />
                         <Route path="waiter" element={<WaiterApp />} />
                         <Route path="cook" element={<CookApp />} />
                         <Route path="housekeeper" element={<HousekeeperApp />} />

@@ -36,7 +36,6 @@ import {
     getDownloadURL
 } from 'firebase/storage';
 
-import Header from '../components/Header';
 
 type MenuItem = {
     id?: string;
@@ -420,10 +419,6 @@ export default function Menu() {
     return (
         <div className="space-y-6">
 
-            <Header
-                title={t('menu.title')}
-                subtitle={`${items.length} stavki`}
-            />
 
             {/* STATS */}
             <div className="

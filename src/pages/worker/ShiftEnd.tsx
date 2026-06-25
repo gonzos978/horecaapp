@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { StopCircle, Clock, CheckCircle, AlertTriangle, Hourglass, Award } from "lucide-react";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, updateDoc, query, where, serverTimestamp } from "firebase/firestore";
 import { db } from "../../fb/firebase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useWorkerShift } from "../../hooks/useWorkerShift";
+import WorkerHeader from "../../components/WorkerHeader";
 
 async function finalizeWorkerScore(shiftId: string, workerEmail: string) {
     // Read shift to get scoreBreakdown + remindersReceived
@@ -25,11 +26,12 @@ async function finalizeWorkerScore(shiftId: string, workerEmail: string) {
         finalizedAt: serverTimestamp(),
     });
 
-    // Update cumulative worker stats on user doc
-    const userSnap = await getDoc(doc(db, "users", workerEmail));
-    if (!userSnap.exists()) return finalScore;
+    // Update cumulative worker stats — find user doc by email (works for both uid-keyed and email-keyed docs)
+    const userQuery = await getDocs(query(collection(db, "users"), where("email", "==", workerEmail)));
+    if (userQuery.empty) return finalScore;
+    const userDocRef = userQuery.docs[0].ref;
 
-    const stats = userSnap.data().workerStats ?? {};
+    const stats = userQuery.docs[0].data().workerStats ?? {};
     const prevAvg = stats.overallScore ?? finalScore;
     const prevCount = stats.shiftsCount ?? 0;
 
@@ -41,7 +43,7 @@ async function finalizeWorkerScore(shiftId: string, workerEmail: string) {
     const recent: number[] = Array.isArray(stats.recentScores) ? stats.recentScores : [];
     const recentScores = [...recent, finalScore].slice(-7);
 
-    await updateDoc(doc(db, "users", workerEmail), {
+    await updateDoc(userDocRef, {
         workerStats: {
             overallScore: newAvg,
             lastShiftScore: finalScore,
@@ -124,7 +126,9 @@ export default function ShiftEnd() {
     }
 
     return (
-        <div className="max-w-md mx-auto space-y-6 animate-in fade-in duration-300">
+        <div className="min-h-screen bg-slate-50">
+        <WorkerHeader />
+        <div className="max-w-md mx-auto space-y-6 animate-in fade-in duration-300 p-6">
             {/* Time card */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-3">
                 <Clock className="w-5 h-5 text-slate-400" />
@@ -200,6 +204,7 @@ export default function ShiftEnd() {
                 <StopCircle className="w-6 h-6" />
                 {ending ? "Snimanje..." : "Završi smjenu"}
             </button>
+        </div>
         </div>
     );
 }

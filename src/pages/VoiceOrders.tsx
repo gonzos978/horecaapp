@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Mic, MicOff, Volume2, AlertCircle, ShieldAlert, TrendingDown, TrendingUp, UserX } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import Header from '../components/Header';
 
 export default function VoiceOrders() {
   const { t } = useLanguage();
@@ -116,7 +115,6 @@ export default function VoiceOrders() {
 
   return (
     <div className="space-y-6">
-      <Header title={t('voice.title')} subtitle={`${orders.length} porudžbina snimljeno`} />
 
       <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-8 text-white">
         <div className="text-center">
