@@ -54,7 +54,7 @@ export const storage = getStorage(app);
  * FUNCTIONS
  */
 
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, "us-central1");
 
 
 export { serverTimestamp };

@@ -284,6 +284,20 @@ service cloud.firestore {
     }
 
     // =====================================================
+    // TRAINING INSTRUCTIONS (PDFs per customer/worker type)
+    // =====================================================
+    match /training-instructions/{docId} {
+      allow read: if isSignedIn()
+                  && (
+                    resource.data.customerId == getUserData().customerId
+                    || isSuperAdmin()
+                  );
+      allow create: if isSignedIn() && isManagerOrCustomer();
+      allow delete: if isSignedIn() && isManagerOrCustomer()
+                    && resource.data.customerId == getUserData().customerId;
+    }
+
+    // =====================================================
     // GENERATED TESTS
     // =====================================================
     match /generated_tests/{testId} {

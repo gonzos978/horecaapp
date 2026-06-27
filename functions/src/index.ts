@@ -12,7 +12,8 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-const genAI = new GoogleGenerativeAI("AIzaSyBm5ioCwKtsY5AghnXTwlWwsNgaK94LM7s");
+const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAuweguPGysCbQFhctYt5UI8YAzxaYzdtI";
+const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
 /**
  * =========================================================
@@ -653,5 +654,42 @@ export const generateTestFromPDF = onObjectFinalized({
 
     } catch (error) {
         console.error("AI Generation Error:", error);
+    }
+});
+
+// =========================================================
+// ANA CHAT — Gemini-powered AI assistant
+// =========================================================
+const ANA_SYSTEM = `Ti si Ana, AI asistent za Smarter HoReCa platformu — vodeće rješenje za upravljanje hotelima, restoranima, kaféima i cateringom u regiji.
+Pomažeš menadžerima i vlasnicima ugostiteljskih objekata sa: upravljanjem osobljem, smjenama, godišnjim odmorima, obukama, inventarom, menijima i anonimnim prijavama.
+Uvijek odgovaraj ljubazno, profesionalno i kratko. Odgovaraj na istom jeziku kojim ti se korisnik obraća.`;
+
+export const anaChat = onCall({ cors: true }, async (request) => {
+    const { message, history } = request.data as {
+        message: string;
+        history: { role: string; text: string }[];
+    };
+
+    if (!message?.trim()) throw new HttpsError("invalid-argument", "Message is required");
+
+    try {
+        const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-flash",
+            systemInstruction: ANA_SYSTEM,
+        });
+
+        const chat = model.startChat({
+            history: (history ?? []).map((m: any) => ({
+                role: m.role === "user" ? "user" : "model",
+                parts: [{ text: m.text }],
+            })),
+            generationConfig: { maxOutputTokens: 1024 },
+        });
+
+        const result = await chat.sendMessage(message);
+        return { reply: result.response.text() };
+    } catch (err: any) {
+        console.error("anaChat error:", err?.message ?? err);
+        throw new HttpsError("internal", err?.message ?? "Gemini error");
     }
 });

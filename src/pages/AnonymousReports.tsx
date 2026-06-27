@@ -312,13 +312,18 @@ function AdminView() {
       const q = currentUser?.customerId
         ? query(
             collection(db, 'anonymous_reports'),
-            where('customerId', '==', currentUser.customerId),
-            orderBy('createdAt', 'desc')
+            where('customerId', '==', currentUser.customerId)
           )
-        : query(collection(db, 'anonymous_reports'), orderBy('createdAt', 'desc'));
+        : query(collection(db, 'anonymous_reports'));
 
       const snap = await getDocs(q);
-      setReports(snap.docs.map(d => ({ id: d.id, ...d.data() } as AnonReport)));
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AnonReport));
+      docs.sort((a, b) => {
+        const at = a.createdAt?.seconds ?? 0;
+        const bt = b.createdAt?.seconds ?? 0;
+        return bt - at;
+      });
+      setReports(docs);
     } catch (e) {
       console.error('AdminView loadReports:', e);
     } finally {

@@ -42,13 +42,14 @@ export default function Navigation({
     const {t} = useLanguage();
     const {currentUser} = useAuth();
     const isWorker = currentUser?.role?.toLowerCase() === "worker";
-    const [pendingCount, setPendingCount]   = useState(0);
+    const [pendingCount,  setPendingCount]  = useState(0);
+    const [pendingReports, setPendingReports] = useState(0);
     const [unreadNotifs, setUnreadNotifs]   = useState<any[]>([]);
     const [showNotifs,   setShowNotifs]     = useState(false);
     const [actingNotif,  setActingNotif]    = useState<string | null>(null);
     const { user } = useAuth();
 
-    // Manager: count pending requests
+    // Manager: count pending vacation/sick/replacement requests
     useEffect(() => {
         if (!currentUser?.customerId || isWorker) return;
         const q = query(
@@ -57,6 +58,18 @@ export default function Navigation({
             where("status", "==", "pending")
         );
         const unsub = onSnapshot(q, snap => setPendingCount(snap.size));
+        return () => unsub();
+    }, [currentUser?.customerId, isWorker]);
+
+    // Manager: count unread/new anonymous reports
+    useEffect(() => {
+        if (!currentUser?.customerId || isWorker) return;
+        const q = query(
+            collection(db, "anonymous_reports"),
+            where("customerId", "==", currentUser.customerId),
+            where("status", "==", "pending")
+        );
+        const unsub = onSnapshot(q, snap => setPendingReports(snap.size));
         return () => unsub();
     }, [currentUser?.customerId, isWorker]);
 
@@ -271,6 +284,11 @@ export default function Navigation({
                             {item.id === "requests" && pendingCount > 0 && (
                                 <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
                                     {pendingCount}
+                                </span>
+                            )}
+                            {item.id === "anonymousReports" && pendingReports > 0 && (
+                                <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
+                                    {pendingReports}
                                 </span>
                             )}
                         </button>

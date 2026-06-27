@@ -33,6 +33,7 @@ import WorkerStats from "./pages/WorkerStats";
 import WorkerProfile from "./pages/WorkerProfile";
 import MyProfile from "./pages/MyProfile";
 import Requests from "./pages/Requests";
+import LandingPage from "./pages/LandingPage";
 import WaiterApp from "./pages/pwa/WaiterApp";
 import CookApp from "./pages/pwa/CookApp";
 import HousekeeperApp from "./pages/pwa/HousekeeperApp";
@@ -212,8 +213,8 @@ export default function App() {
                         <Route path="shift-end" element={<ShiftEnd />} />
                     </Route>
 
-                    {/* DEFAULT */}
-                    <Route path="/" element={<Navigate to="/admin/login" replace />} />
+                    {/* LANDING */}
+                    <Route path="/" element={<LandingPage />} />
                 </Routes>
             </BrowserRouter>
         </AuthProvider>

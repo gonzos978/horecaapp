@@ -49,6 +49,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setCurrentUser(null);
       setIsAdmin(false);
       setIsSuperAdmin(false);
+      window.location.href = "/";
     } catch (err) {
       console.error("Logout failed", err);
     }

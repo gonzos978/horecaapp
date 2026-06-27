@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 import { GraduationCap, Play, FileText, Award, PlusCircle, Clock, Users, Pencil, Trash2, CheckCircle, XCircle, ChevronRight, RotateCcw } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -102,6 +103,8 @@ export default function Training() {
                 userEmail: authUser?.email ?? null,
                 userName: currentUser?.name ?? authUser?.email ?? "Nepoznat",
                 userRole: currentUser?.type ?? currentUser?.role ?? null,
+                customerId: currentUser?.customerId ?? null,
+                customerName: currentUser?.customerName ?? null,
                 quizId: activeQuiz.id,
                 quizTitle: activeQuiz.title,
                 quizRole: activeQuiz.role,
@@ -144,12 +147,7 @@ export default function Training() {
 
     const userId = authUser?.uid;
 
-    const workerTypes = [
-        { value: "konobar", label: "Konobar" },
-        { value: "kuvar", label: "Kuvar" },
-        { value: "sobarica", label: "Sobarica" },
-        { value: "sanker", label: "Šanker" },
-    ];
+    const workerTypes = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
 
     const contentTypeIcons = { VIDEO: Play, QUIZ: FileText, PRACTICE: Award, DOCUMENT: FileText, INTERACTIVE: Award };
     const contentTypeColors = { VIDEO: 'bg-red-100 text-red-800', QUIZ: 'bg-blue-100 text-blue-800', PRACTICE: 'bg-purple-100 text-purple-800', DOCUMENT: 'bg-slate-100 text-slate-800', INTERACTIVE: 'bg-emerald-100 text-emerald-800' };
@@ -168,30 +166,37 @@ export default function Training() {
         if (userId) loadPrivateModules();
     }, [userId]);
 
+    useEffect(() => {
+        if (isWorker && workerRoleKey) setSelectedPosition(workerRoleKey);
+    }, [isWorker, workerRoleKey]);
+
     const loadPositions = () => {
-        setPositions([
-            { id: '1', code: 'konobar', name_en: 'Waiter', name_bs: 'Konobar' },
-            { id: '2', code: 'kuvar', name_en: 'Chef', name_bs: 'Kuvar' },
-            { id: '3', code: 'sobarica', name_en: 'Housekeeper', name_bs: 'Sobarica' },
-            { id: '4', code: 'sanker', name_en: 'Barman', name_bs: 'Šanker' },
-        ]);
+        setPositions(Object.entries(ROLE_LABELS).map(([code, name_bs], i) => ({
+            id: String(i + 1), code, name_en: code, name_bs,
+        })));
     };
 
     const getPositionCodeFromFileName = (fileName: string) => {
         const lower = fileName.toLowerCase();
-        if (lower.includes("konobar")) return "konobar";
-        if (lower.includes("kuvar")) return "kuvar";
-        if (lower.includes("sobarica")) return "sobarica";
-        if (lower.includes("šanker") || lower.includes("barmen")) return "sanker";
+        if (lower.includes("konobar") || lower.includes("waiter"))         return "waiter";
+        if (lower.includes("kuvar") || lower.includes("cook"))             return "cook";
+        if (lower.includes("sobarica") || lower.includes("housekeeper"))   return "housekeeper";
+        if (lower.includes("šanker") || lower.includes("barman") || lower.includes("barmen")) return "barman";
+        if (lower.includes("manager") || lower.includes("menadžer"))       return "manager";
         return "";
     };
 
-    const getAllModules = () => [...modules, ...publicModules];
+    const getAllModules = () => {
+        const all = [...modules, ...publicModules];
+        return isWorker && workerRoleKey ? all.filter(m => m.position_code === workerRoleKey) : all;
+    };
     const getPositionModules = (code: string) => getAllModules().filter(m => m.position_code === code);
+    const visiblePositions = isWorker && workerRoleKey ? positions.filter(p => p.code === workerRoleKey) : positions;
 
-    const calculatePositionCounters = () => {
+    const calculatePositionCounters = (overrideModules?: any[], overridePublic?: any[]) => {
+        const all = [...(overrideModules ?? modules), ...(overridePublic ?? publicModules)];
         const counters: Record<string, number> = {};
-        getAllModules().forEach(m => {
+        all.forEach(m => {
             if (!m.position_code) return;
             counters[m.position_code] = (counters[m.position_code] || 0) + 1;
         });
@@ -199,34 +204,46 @@ export default function Training() {
     };
 
     const loadPrivateModules = async () => {
-        if (!userId) return;
-        const storage = getStorage();
-        const allModules: any[] = [];
-        for (const w of workerTypes) {
-            const folderRef = ref(storage, `training-instructions/${userId}/${w.value}`);
-            try {
-                const list = await listAll(folderRef);
-                for (const itemRef of list.items) {
-                    const url = await getDownloadURL(itemRef);
-                    allModules.push({ id: itemRef.name, position_code: w.value, fileName: itemRef.name, fileUrl: url, isPublic: false, content_type: "DOCUMENT" });
-                }
-            } catch { /* folder may not exist */ }
+        if (!currentUser?.customerId) return;
+        try {
+            const q = query(
+                collection(db, "training-instructions"),
+                where("customerId", "==", currentUser.customerId)
+            );
+            const snap = await getDocs(q);
+            const allModules = snap.docs.map(d => {
+                const data = d.data();
+                const fileUrl = data.filePath ? makeStorageUrl(data.filePath) : data.fileUrl;
+                return { id: d.id, position_code: data.workerType, fileName: data.fileName, fileUrl, filePath: data.filePath, isPublic: false, content_type: "DOCUMENT" };
+            });
+            setModules(allModules);
+            calculatePositionCounters(allModules);
+        } catch (err) {
+            console.error("Error loading training instructions:", err);
         }
-        setModules(allModules);
-        calculatePositionCounters();
+    };
+
+    const makeStorageUrl = (filePath: string) => {
+        const bucket = "horecaapp-e16cf.firebasestorage.app";
+        return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(filePath)}?alt=media`;
     };
 
     const loadPublicModules = async () => {
         try {
             const snapshot = await getDocs(collection(db, "documents"));
-            const docs = snapshot.docs.map(d => ({
-                id: d.id, isPublic: true,
-                fileName: d.data().fileName, fileUrl: d.data().fileUrl,
-                position_code: getPositionCodeFromFileName(d.data().fileName),
-                content_type: "DOCUMENT",
-            }));
+            const docs = snapshot.docs.map(d => {
+                const data = d.data();
+                const fileUrl = data.filePath ? makeStorageUrl(data.filePath) : data.fileUrl;
+                return {
+                    id: d.id, isPublic: true,
+                    fileName: data.fileName, fileUrl,
+                    filePath: data.filePath,
+                    position_code: getPositionCodeFromFileName(data.fileName),
+                    content_type: "DOCUMENT",
+                };
+            });
             setPublicModules(docs);
-            calculatePositionCounters();
+            calculatePositionCounters(undefined, docs);
         } catch (err) {
             console.error("Error loading public modules:", err);
         }
@@ -266,20 +283,31 @@ export default function Training() {
     };
 
     const uploadInstruction = async () => {
-        if (!file || !workerType) { alert("Izaberite tip radnika i PDF fajl"); return; }
-        if (!file.name.toLowerCase().endsWith(".pdf")) { alert("Dozvoljen je samo PDF"); return; }
-        if (!userId) { alert("Morate biti prijavljeni da biste uploadovali PDF"); return; }
+        if (!file || !workerType) { toast.error("Izaberite tip radnika i PDF fajl"); return; }
+        if (!file.name.toLowerCase().endsWith(".pdf")) { toast.error("Dozvoljen je samo PDF format"); return; }
+        if (!userId || !currentUser?.customerId) { toast.error("Morate biti prijavljeni da biste uploadovali PDF"); return; }
         setUploading(true);
         try {
             const uniqueName = `${Date.now()}-${file.name}`;
-            const storageRef = ref(getStorage(), `training-instructions/${userId}/${workerType}/${uniqueName}`);
+            const filePath = `training-instructions/${currentUser.customerId}/${workerType}/${uniqueName}`;
+            const storageRef = ref(getStorage(), filePath);
             await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(storageRef);
-            setModules(prev => [...prev, { id: uniqueName, position_code: workerType, fileName: file.name, fileUrl: downloadURL, isPublic: false, content_type: "DOCUMENT" }]);
+            const fileUrl = makeStorageUrl(filePath);
+            const docRef = await addDoc(collection(db, "training-instructions"), {
+                customerId: currentUser.customerId,
+                customerName: currentUser.customerName ?? "",
+                workerType,
+                fileName: file.name,
+                filePath,
+                fileUrl,
+                uploadedBy: userId,
+                createdAt: serverTimestamp(),
+            });
+            setModules(prev => [...prev, { id: docRef.id, position_code: workerType, fileName: file.name, fileUrl, filePath, isPublic: false, content_type: "DOCUMENT" }]);
             calculatePositionCounters();
-            alert("Instrukcija uspješno uploadovana");
+            toast.success("Instrukcija uspješno uploadovana!");
             setFile(null); setWorkerType(""); setFileInputKey(Date.now());
-        } catch { alert("Greška pri uploadu PDF-a"); }
+        } catch (err) { console.error(err); toast.error("Greška pri uploadu PDF-a. Pokušajte ponovo."); }
         finally { setUploading(false); }
     };
 
@@ -287,15 +315,19 @@ export default function Training() {
         if (!deleteTarget) return;
         try {
             if (!deleteTarget.isPublic) {
-                const fileRef = ref(getStorage(), `training-instructions/${userId}/${deleteTarget.position_code}/${deleteTarget.id}`);
-                await deleteObject(fileRef);
+                // Delete from Storage
+                if (deleteTarget.filePath) {
+                    try { await deleteObject(ref(getStorage(), deleteTarget.filePath)); } catch { /* may already be gone */ }
+                }
+                // Delete from Firestore
+                await deleteDoc(doc(db, "training-instructions", deleteTarget.id));
                 setModules(prev => prev.filter(m => m.id !== deleteTarget.id));
             } else {
                 setPublicModules(prev => prev.filter(m => m.id !== deleteTarget.id));
             }
             setDeleteTarget(null);
             calculatePositionCounters();
-        } catch { alert("Greška pri brisanju PDF-a"); }
+        } catch { toast.error("Greška pri brisanju PDF-a"); }
     };
 
     const deleteQuiz = async () => {
@@ -304,7 +336,7 @@ export default function Training() {
             await deleteDoc(doc(db, "quizzes", deleteQuizTarget.id));
             setQuizzes(prev => prev.filter(q => q.id !== deleteQuizTarget.id));
             setDeleteQuizTarget(null);
-        } catch { alert("Greška pri brisanju kviza."); }
+        } catch { toast.error("Greška pri brisanju kviza"); }
     };
 
     const filteredQuizzes = workerRoleKey
@@ -585,30 +617,32 @@ export default function Training() {
             </div>
 
             {/* ── PDF Modules ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div className="lg:col-span-1 space-y-2">
-                    <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wider px-2">Pozicije</h3>
-                    <div className="space-y-1">
-                        {positions.map(position => {
-                            const isSelected = selectedPosition === position.code;
-                            const posModules = getPositionModules(position.code);
-                            const nameKey = `name_${language}` as keyof typeof position;
-                            const counter = positionCounters[position.code] || 0;
-                            return (
-                                <button key={position.code} onClick={() => setSelectedPosition(position.code)} className={`w-full text-left px-4 py-3 rounded-lg transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}>
-                                    <div className="font-medium">{position[nameKey]}</div>
-                                    <div className={`text-xs mt-1 ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>{posModules.length} modula • {counter} PDF</div>
-                                </button>
-                            );
-                        })}
+            <div className="space-y-4">
+                {isWorker ? null : (
+                    <div className="flex items-center gap-3">
+                        <label className="text-sm font-semibold text-slate-600 whitespace-nowrap">Pozicija:</label>
+                        <select
+                            value={selectedPosition ?? ""}
+                            onChange={e => setSelectedPosition(e.target.value || null)}
+                            className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[220px]"
+                        >
+                            <option value="">— Odaberite poziciju —</option>
+                            {visiblePositions
+                                .filter(p => (positionCounters[p.code] || 0) > 0)
+                                .map(p => (
+                                    <option key={p.code} value={p.code}>
+                                        {p.name_bs} ({positionCounters[p.code]} PDF)
+                                    </option>
+                                ))}
+                        </select>
                     </div>
-                </div>
+                )}
 
                 <div className="lg:col-span-3">
                     {selectedPosition ? (
                         <div className="space-y-4">
                             <h2 className="text-xl font-bold text-slate-900">
-                                Moduli za: {positions.find(p => p.code === selectedPosition)?.[`name_${language}`]}
+                                Moduli za: {positions.find(p => p.code === selectedPosition)?.name_bs}
                             </h2>
                             {getPositionModules(selectedPosition).map(module => {
                                 const Icon = contentTypeIcons[module.content_type as keyof typeof contentTypeIcons];
@@ -655,3 +689,4 @@ export default function Training() {
         </div>
     );
 }
+

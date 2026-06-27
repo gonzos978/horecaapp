@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
     ArrowLeft, Pencil, Mail, Phone, MapPin, ShieldCheck,
     Briefcase, GraduationCap, Star, Trash2,
-    Clock, Power, Thermometer, Palmtree, Users, Save, X
+    Clock, Power, Thermometer, Palmtree, Users, Save, X,
+    BarChart2, CalendarCheck, Timer, TrendingUp
 } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { functions, db } from "../../fb/firebase";
 
 export default function Worker() {
@@ -20,6 +21,57 @@ export default function Worker() {
     // Inline edit state
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<any>({});
+
+    // Worker shift statistics
+    const [shifts, setShifts] = useState<any[]>([]);
+    const [quizResults, setQuizResults] = useState<any[]>([]);
+    const [statsLoading, setStatsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!worker?.id) return;
+        const fetchStats = async () => {
+            try {
+                // Shifts — must include customerId in query so Firestore rules pass for managers
+                try {
+                    const q = worker.customerId
+                        ? query(collection(db, "shifts"), where("customerId", "==", worker.customerId), where("workerId", "==", worker.id))
+                        : query(collection(db, "shifts"), where("workerId", "==", worker.id));
+                    const snap = await getDocs(q);
+                    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    docs.sort((a: any, b: any) => (b.date ?? "").localeCompare(a.date ?? ""));
+                    setShifts(docs);
+                } catch { /* silent */ }
+                // Quiz results — try by userId first, fallback to userEmail
+                const qrDocs: any[] = [];
+                try {
+                    const qr = query(collection(db, "quiz_results"), where("userId", "==", worker.id));
+                    const qrSnap = await getDocs(qr);
+                    qrSnap.docs.forEach(d => qrDocs.push({ id: d.id, ...d.data() }));
+                } catch { /* silent */ }
+                if (qrDocs.length === 0 && worker.email) {
+                    try {
+                        const qr2 = query(collection(db, "quiz_results"), where("userEmail", "==", worker.email));
+                        const qr2Snap = await getDocs(qr2);
+                        qr2Snap.docs.forEach(d => qrDocs.push({ id: d.id, ...d.data() }));
+                    } catch { /* silent */ }
+                }
+                qrDocs.sort((a, b) => (b.completedAt?.seconds ?? 0) - (a.completedAt?.seconds ?? 0));
+                setQuizResults(qrDocs);
+            } finally {
+                setStatsLoading(false);
+            }
+        };
+        fetchStats();
+    }, [worker?.id]);
+
+    const completedShifts = shifts.filter(s => s.status === "completed");
+    const totalHours = completedShifts.reduce((acc, s) => {
+        const start = s.startTime?.seconds;
+        const end = s.endTime?.seconds;
+        if (start && end) return acc + (end - start) / 3600;
+        return acc;
+    }, 0);
+    const avgHours = completedShifts.length ? totalHours / completedShifts.length : 0;
 
     const handleBack = () => navigate("/app/workers");
     const handleEdit = () =>
@@ -118,6 +170,13 @@ export default function Worker() {
     const fmt = (val: any) => val || "N/A";
     const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("bs-BA", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
+    // Derive live training status from quiz results
+    const passedTests = quizResults.filter(r => r.passed);
+    const trainingDone = passedTests.length > 0;
+    const trainingScore = quizResults.length > 0
+        ? Math.round(quizResults.reduce((sum, r) => sum + (r.percentage ?? 0), 0) / quizResults.length)
+        : 0;
+
     return (
         <div className="min-h-screen bg-slate-100 p-6">
 
@@ -156,8 +215,8 @@ export default function Worker() {
                                     <span className={`px-3 py-1 rounded-full text-sm ${worker.active !== false ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"}`}>
                                         {worker.active !== false ? "Aktivan" : "Neaktivan"}
                                     </span>
-                                    <span className={`px-3 py-1 rounded-full text-sm ${worker.training ? "bg-blue-500/20 text-blue-300" : "bg-yellow-500/20 text-yellow-300"}`}>
-                                        {worker.training ? "Trening završen" : "Trening u toku"}
+                                    <span className={`px-3 py-1 rounded-full text-sm ${trainingDone ? "bg-blue-500/20 text-blue-300" : "bg-yellow-500/20 text-yellow-300"}`}>
+                                        {trainingDone ? "Trening završen" : "Trening u toku"}
                                     </span>
                                 </div>
                             </div>
@@ -322,21 +381,134 @@ export default function Worker() {
                     </Section>
                 </div>
 
+                {/* STATISTICS */}
+                <div className="bg-white rounded-3xl shadow-xl p-8">
+                    <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <BarChart2 size={20} className="text-blue-500" /> Statistika radnika
+                    </h2>
+
+                    {statsLoading ? (
+                        <div className="text-center py-8 text-slate-400 text-sm">Učitavanje statistike...</div>
+                    ) : (
+                        <>
+                            {/* KPI row */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                                <StatCard
+                                    icon={<CalendarCheck size={20} className="text-emerald-500" />}
+                                    label="Ukupno smjena"
+                                    value={completedShifts.length.toString()}
+                                    sub={`${shifts.filter(s => s.status === "active").length > 0 ? "1 aktivna" : "0 aktivnih"}`}
+                                    color="emerald"
+                                />
+                                <StatCard
+                                    icon={<Timer size={20} className="text-blue-500" />}
+                                    label="Prosječno sati"
+                                    value={avgHours.toFixed(1) + "h"}
+                                    sub="po smjeni"
+                                    color="blue"
+                                />
+                                <StatCard
+                                    icon={<Thermometer size={20} className="text-red-500" />}
+                                    label="Bolovanje"
+                                    value={`${worker.sickDays?.used ?? 0}/${worker.sickDays?.total ?? 0}`}
+                                    sub="iskorišteno/ukupno"
+                                    color="red"
+                                />
+                                <StatCard
+                                    icon={<Palmtree size={20} className="text-amber-500" />}
+                                    label="Godišnji odmor"
+                                    value={`${worker.vacation?.used ?? 0}/${worker.vacation?.total ?? 0}`}
+                                    sub="iskorišteno/ukupno"
+                                    color="amber"
+                                />
+                            </div>
+
+                            {/* Total hours bar */}
+                            <div className="mb-8">
+                                <div className="flex items-center justify-between text-sm font-medium mb-2">
+                                    <span className="text-slate-500 flex items-center gap-1.5"><TrendingUp size={14} /> Ukupno odrađenih sati</span>
+                                    <span className="font-bold text-slate-800">{totalHours.toFixed(0)}h</span>
+                                </div>
+                                <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all"
+                                        style={{ width: `${Math.min((totalHours / Math.max(completedShifts.length * 10, 1)) * 10, 100)}%` }} />
+                                </div>
+                            </div>
+
+                            {/* Last shifts list */}
+                            <div className="mb-8">
+                                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-4">Posljednjih 10 smjena</h3>
+                                {completedShifts.length === 0 ? (
+                                    <p className="text-slate-400 text-sm">Nema završenih smjena.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {completedShifts.slice(0, 10).map(s => {
+                                            const startMs = s.startTime?.seconds * 1000;
+                                            const endMs = s.endTime?.seconds * 1000;
+                                            const hrs = startMs && endMs ? ((endMs - startMs) / 3600000).toFixed(1) : "?";
+                                            const dateStr = s.date ? new Date(s.date).toLocaleDateString("bs-BA", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+                                            return (
+                                                <div key={s.id} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition">
+                                                    <div className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                                                    <span className="text-sm font-semibold text-slate-700 w-28">{dateStr}</span>
+                                                    <span className="text-sm text-slate-500 flex-1">{s.endNotes || "—"}</span>
+                                                    <span className="text-sm font-bold text-blue-600">{hrs}h</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Quiz results */}
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
+                                    <GraduationCap size={14} /> Rezultati testova
+                                </h3>
+                                {quizResults.length === 0 ? (
+                                    <p className="text-slate-400 text-sm">Radnik još nije završio nijedan test.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {quizResults.map(r => {
+                                            const date = r.completedAt?.seconds
+                                                ? new Date(r.completedAt.seconds * 1000).toLocaleDateString("bs-BA", { day: "2-digit", month: "2-digit", year: "numeric" })
+                                                : "—";
+                                            return (
+                                                <div key={r.id} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition">
+                                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${r.passed ? "bg-emerald-400" : "bg-red-400"}`} />
+                                                    <span className="text-sm font-semibold text-slate-700 flex-1 truncate">{r.quizTitle ?? "Test"}</span>
+                                                    <span className="text-xs text-slate-400 w-24 text-right">{date}</span>
+                                                    <span className={`text-sm font-bold w-12 text-right ${r.passed ? "text-emerald-600" : "text-red-500"}`}>
+                                                        {r.percentage ?? 0}%
+                                                    </span>
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${r.passed ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                                                        {r.passed ? "Položio" : "Nije položio"}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+
                 {/* TRAINING */}
                 <div className="bg-white rounded-3xl shadow-xl p-8">
                     <h2 className="text-xl font-bold text-slate-800 mb-5 flex items-center gap-2">
                         <GraduationCap size={20} className="text-violet-500" /> Trening pregled
                     </h2>
                     <div className="flex justify-between text-sm font-medium mb-2">
-                        <span className="text-slate-500">Završenost</span>
-                        <span className="text-slate-800 font-bold">{worker.trainingScore || 0}%</span>
+                        <span className="text-slate-500">Prosječan rezultat</span>
+                        <span className="text-slate-800 font-bold">{statsLoading ? "..." : `${trainingScore}%`}</span>
                     </div>
                     <div className="h-4 bg-slate-200 rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-500"
-                            style={{ width: `${worker.trainingScore || 0}%` }} />
+                            style={{ width: `${trainingScore}%` }} />
                     </div>
-                    <div className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold ${worker.training ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {worker.training ? "✔ Trening završen" : "✖ Trening nije završen"}
+                    <div className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold ${trainingDone ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {statsLoading ? "Učitavanje..." : trainingDone ? `✔ Trening završen (${passedTests.length} test${passedTests.length === 1 ? "" : "a"})` : "✖ Trening nije završen"}
                     </div>
                     <div className="mt-4 text-sm text-slate-500">
                         Kreiran: <span className="font-semibold text-slate-700">
@@ -368,6 +540,22 @@ function Field({ label, editing, display, input }: { label: string; editing: boo
         <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</label>
             {editing && input ? input : <div className="text-sm font-semibold text-slate-800">{display}</div>}
+        </div>
+    );
+}
+
+function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub: string; color: string }) {
+    const colors: Record<string, string> = {
+        emerald: "bg-emerald-50 border-emerald-100",
+        blue:    "bg-blue-50 border-blue-100",
+        red:     "bg-red-50 border-red-100",
+        amber:   "bg-amber-50 border-amber-100",
+    };
+    return (
+        <div className={`rounded-2xl border p-4 ${colors[color] ?? "bg-slate-50 border-slate-100"}`}>
+            <div className="flex items-center gap-2 mb-2">{icon}<span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</span></div>
+            <p className="text-2xl font-black text-slate-800">{value}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
         </div>
     );
 }
