@@ -1,9 +1,10 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import {onObjectFinalized} from "firebase-functions/storage";
 import {getStorage} from "firebase-admin/storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import {getFirestore} from "firebase-admin/firestore";
+import { VertexAI } from "@google-cloud/vertexai";
 
 
 if (!admin.apps.length) {
@@ -36,83 +37,54 @@ async function getRequester(uid: string) {
  * =========================================================
  */
 
-export const createCustomer = onCall(
-    {
-        cors: true,
-        timeoutSeconds: 60,
-        memory: "512MiB",
-    },
-
-
-
-    async (request) => {
-        console.log("FUNCTION HIT");
-        // 1. Inline Auth Check (Fixes TS18048 completely)
-        if (!request.auth) {
-            throw new HttpsError(
-                "unauthenticated",
-                "User must be logged in"
-            );
-        }
-        console.log("createCustomer.....");
-        const uid = request.auth.uid;
-        const requester = await getRequester(uid);
-
-        if (!requester) {
-            throw new HttpsError(
-                "permission-denied",
-                "User not found"
-            );
-        }
-        console.log("ROLE: ", requester.type)
-        if (requester.type !== "SUPER_ADMIN") {
-            throw new HttpsError(
-                "permission-denied",
-                "Only super admins allowed"
-            );
+export const createCustomer = onRequest(
+    { cors: true, invoker: "public", timeoutSeconds: 60, memory: "512MiB" },
+    async (req, res) => {
+        if (req.method === "OPTIONS") {
+            res.set("Access-Control-Allow-Origin", "*");
+            res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+            res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            res.status(204).send("");
+            return;
         }
 
-        // Added fallback empty object to protect against destructuring undefined
-        const {
-            customerName,
-            businessType,
-            address,
-            phone,
-            adminName,
-            adminEmail,
-            adminPassword,
-        } = request.data || {};
-
-        if (
-            !customerName ||
-            !adminEmail ||
-            !adminPassword
-        ) {
-            throw new HttpsError(
-                "invalid-argument",
-                "Missing required fields"
-            );
-        }
+        res.set("Access-Control-Allow-Origin", "*");
 
         try {
-            /**
-             * 🔥 CUSTOMER ID
-             */
+            // Verify Firebase ID token
+            const authHeader = req.headers.authorization || "";
+            const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+            if (!token) { res.status(401).json({ error: "Unauthenticated" }); return; }
+
+            const decoded = await admin.auth().verifyIdToken(token);
+            const uid = decoded.uid;
+            const requester = await getRequester(uid);
+
+            if (!requester || requester.type !== "SUPER_ADMIN") {
+                res.status(403).json({ error: "Only super admins allowed" });
+                return;
+            }
+
+            const {
+                customerName, businessType, locationName, locationId,
+                address, city, country, contactFirstName, contactLastName,
+                phone, email, website, gps, capacity, notes, adminName, adminEmail, adminPassword,
+            } = req.body;
+
+            if (!customerName || !adminEmail || !adminPassword) {
+                res.status(400).json({ error: "Missing required fields" });
+                return;
+            }
+
             const customerRef = db.collection("customers").doc();
             const customerId = customerRef.id;
 
-            /**
-             * 👤 CREATE AUTH USER (MANAGER)
-             */
             const userRecord = await admin.auth().createUser({
                 email: adminEmail,
                 password: adminPassword,
-                displayName: adminName || "",
+                displayName: adminName || customerName,
             });
 
-            /**
-             * 🧠 MANAGER DATA
-             */
             const managerData = {
                 uid: userRecord.uid,
                 customerId,
@@ -125,17 +97,25 @@ export const createCustomer = onCall(
                 createdAt: new Date().toISOString(),
             };
 
-            /**
-             * ⚡ BATCH WRITE
-             */
             const batch = db.batch();
 
             batch.set(customerRef, {
                 id: customerId,
                 customerName,
-                businessType,
+                businessType: businessType || "",
+                locationName: locationName || "",
+                locationId: locationId || null,
                 address: address || "",
+                city: city || "",
+                country: country || "",
+                contactFirstName: contactFirstName || "",
+                contactLastName: contactLastName || "",
                 phone: phone || "",
+                email: email || "",
+                website: website || "",
+                gps: gps || null,
+                capacity: capacity || null,
+                notes: notes || "",
                 status: "ACTIVE",
                 plan: "FREE",
                 createdAt: new Date().toISOString(),
@@ -143,44 +123,21 @@ export const createCustomer = onCall(
             });
 
             batch.set(
-                db
-                    .collection("customers")
-                    .doc(customerId)
-                    .collection("managers")
-                    .doc(userRecord.uid),
+                db.collection("customers").doc(customerId).collection("managers").doc(userRecord.uid),
                 managerData
             );
-
-            batch.set(
-                db.collection("users").doc(userRecord.uid),
-                managerData
-            );
+            batch.set(db.collection("users").doc(userRecord.uid), managerData);
 
             await batch.commit();
 
-            return {
-                success: true,
-                customerId,
-                managerUid: userRecord.uid,
-            };
-
+            res.status(200).json({ success: true, customerId, managerUid: userRecord.uid });
         } catch (error: any) {
-            console.error("Create Customer Error:", error);
-
+            console.error("createCustomer error:", error);
             if (error.code === "auth/email-already-exists") {
-                throw new HttpsError(
-                    "already-exists",
-                    "Email already exists"
-                );
+                res.status(409).json({ error: "Email already exists" });
+                return;
             }
-
-            // Fallthrough security: Ensure custom errors aren't masked as 500s
-            if (error instanceof HttpsError) throw error;
-
-            throw new HttpsError(
-                "internal",
-                error?.message || "Failed to create customer"
-            );
+            res.status(500).json({ error: error?.message || "Failed to create customer" });
         }
     }
 );
@@ -192,7 +149,7 @@ export const createCustomer = onCall(
  * =========================================================
  */
 export const createWorker = onCall(
-    { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+    { cors: true, invoker: "public", timeoutSeconds: 60, memory: "256MiB" },
     async (request) => {
         if (!request.auth) {
             throw new HttpsError("unauthenticated", "Login required");
@@ -274,7 +231,7 @@ export const createWorker = onCall(
  * DELETE WORKER
  */
 export const deleteWorker = onCall(
-    { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+    { cors: true, invoker: "public", timeoutSeconds: 60, memory: "256MiB" },
     async (request) => {
         if (!request.auth) throw new HttpsError("unauthenticated", "Login required");
 
@@ -481,6 +438,7 @@ export const deleteUser = onCall(
 export const generateQuestions = onCall(
     {
         cors: true,
+        invoker: "public",
         timeoutSeconds: 120,
         memory: "1GiB",
     },
@@ -664,7 +622,9 @@ const ANA_SYSTEM = `Ti si Ana, AI asistent za Smarter HoReCa platformu — vode�
 Pomažeš menadžerima i vlasnicima ugostiteljskih objekata sa: upravljanjem osobljem, smjenama, godišnjim odmorima, obukama, inventarom, menijima i anonimnim prijavama.
 Uvijek odgovaraj ljubazno, profesionalno i kratko. Odgovaraj na istom jeziku kojim ti se korisnik obraća.`;
 
-export const anaChat = onCall({ cors: true }, async (request) => {
+const vertexAI = new VertexAI({ project: "horecaapp-e16cf", location: "us-central1" });
+
+export const anaChat = onCall({ cors: true, invoker: "public" }, async (request) => {
     const { message, history } = request.data as {
         message: string;
         history: { role: string; text: string }[];
@@ -673,9 +633,9 @@ export const anaChat = onCall({ cors: true }, async (request) => {
     if (!message?.trim()) throw new HttpsError("invalid-argument", "Message is required");
 
     try {
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            systemInstruction: ANA_SYSTEM,
+        const model = vertexAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            systemInstruction: { role: "system", parts: [{ text: ANA_SYSTEM }] },
         });
 
         const chat = model.startChat({
@@ -683,11 +643,11 @@ export const anaChat = onCall({ cors: true }, async (request) => {
                 role: m.role === "user" ? "user" : "model",
                 parts: [{ text: m.text }],
             })),
-            generationConfig: { maxOutputTokens: 1024 },
         });
 
-        const result = await chat.sendMessage(message);
-        return { reply: result.response.text() };
+        const result = await chat.sendMessage([{ text: message }]);
+        const reply = result.response.candidates?.[0]?.content?.parts?.[0]?.text ?? "Nema odgovora.";
+        return { reply };
     } catch (err: any) {
         console.error("anaChat error:", err?.message ?? err);
         throw new HttpsError("internal", err?.message ?? "Gemini error");

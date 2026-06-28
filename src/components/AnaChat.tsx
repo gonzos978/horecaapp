@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, X, Maximize2 } from "lucide-react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const SYSTEM_PROMPT = `Ti si Ana, AI asistent za Smarter HoReCa platformu — vodeće rješenje za upravljanje hotelima, restoranima, kaféima i cateringom u regiji.
-Pomažeš menadžerima i vlasnicima ugostiteljskih objekata sa: upravljanjem osobljem, smjenama, godišnjim odmorima, obukama, inventarom, menijima i anonimnim prijavama.
-Uvijek odgovaraj ljubazno, profesionalno i kratko. Odgovaraj na istom jeziku kojim ti se korisnik obraća.`;
-
-const genAI = new GoogleGenerativeAI("AIzaSyAuweguPGysCbQFhctYt5UI8YAzxaYzdtI");
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../fb/firebase";
 
 interface Message {
     id: string;
@@ -22,18 +17,7 @@ export default function AnaChat() {
     const [loading, setLoading] = useState(false);
     const [showPhoto, setShowPhoto] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
-    const chatRef = useRef<any>(null);
-
-    useEffect(() => {
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
-            systemInstruction: SYSTEM_PROMPT,
-        });
-        chatRef.current = model.startChat({
-            history: [],
-            generationConfig: { maxOutputTokens: 1024 },
-        });
-    }, []);
+    const anaChatFn = httpsCallable(functions, "anaChat");
 
     useEffect(() => {
         if (open) return;
@@ -48,7 +32,7 @@ export default function AnaChat() {
 
     const send = async (text: string) => {
         const v = text.trim();
-        if (!v || loading || !chatRef.current) return;
+        if (!v || loading) return;
         setInput("");
         setBubbleVisible(false);
 
@@ -58,9 +42,11 @@ export default function AnaChat() {
         setLoading(true);
 
         try {
-            const result = await chatRef.current.sendMessage(v);
-            const reply = result.response.text();
-            setMessages([...updated, { id: Date.now().toString() + "a", role: "assistant", text: reply }]);
+            const res: any = await anaChatFn({
+                message: v,
+                history: messages.map(m => ({ role: m.role, text: m.text })),
+            });
+            setMessages([...updated, { id: Date.now().toString() + "a", role: "assistant", text: res.data.reply }]);
         } catch (err: any) {
             console.error("AnaChat error:", err);
             setMessages([...updated, { id: Date.now().toString() + "e", role: "assistant", text: "Žao mi je, desila se greška. Pokušajte ponovo." }]);

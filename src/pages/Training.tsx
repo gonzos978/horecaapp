@@ -167,6 +167,10 @@ export default function Training() {
     }, [userId]);
 
     useEffect(() => {
+        calculatePositionCounters();
+    }, [modules, publicModules]);
+
+    useEffect(() => {
         if (isWorker && workerRoleKey) setSelectedPosition(workerRoleKey);
     }, [isWorker, workerRoleKey]);
 
@@ -230,20 +234,52 @@ export default function Training() {
 
     const loadPublicModules = async () => {
         try {
-            const snapshot = await getDocs(collection(db, "documents"));
-            const docs = snapshot.docs.map(d => {
-                const data = d.data();
-                const fileUrl = data.filePath ? makeStorageUrl(data.filePath) : data.fileUrl;
-                return {
-                    id: d.id, isPublic: true,
-                    fileName: data.fileName, fileUrl,
-                    filePath: data.filePath,
-                    position_code: getPositionCodeFromFileName(data.fileName),
-                    content_type: "DOCUMENT",
-                };
-            });
-            setPublicModules(docs);
-            calculatePositionCounters(undefined, docs);
+            // First load from Firestore (has workerType metadata)
+            const firestoreDocs: any[] = [];
+            try {
+                const snapshot = await getDocs(collection(db, "documents"));
+                snapshot.docs.forEach(d => {
+                    const data = d.data();
+                    const fileUrl = data.filePath ? makeStorageUrl(data.filePath) : data.fileUrl;
+                    firestoreDocs.push({
+                        id: d.id, isPublic: true,
+                        fileName: data.fileName, fileUrl,
+                        filePath: data.filePath,
+                        position_code: data.workerType || getPositionCodeFromFileName(data.fileName),
+                        content_type: "DOCUMENT",
+                    });
+                });
+            } catch { /* ignore */ }
+
+            // Also list Storage directly to catch files not in Firestore
+            const storageDocs: any[] = [];
+            try {
+                const storage = getStorage();
+                const listRef = ref(storage, "documents");
+                const result = await listAll(listRef);
+
+                // List subdirectories (each user's folder)
+                for (const folderRef of result.prefixes) {
+                    const folderResult = await listAll(folderRef);
+                    for (const itemRef of folderResult.items) {
+                        const filePath = itemRef.fullPath;
+                        const fileName = itemRef.name.replace(/^\d+_/, ""); // strip timestamp prefix
+                        // Skip if already in firestoreDocs
+                        if (firestoreDocs.some(d => d.filePath === filePath)) continue;
+                        const fileUrl = makeStorageUrl(filePath);
+                        storageDocs.push({
+                            id: filePath, isPublic: true,
+                            fileName, fileUrl, filePath,
+                            position_code: getPositionCodeFromFileName(fileName),
+                            content_type: "DOCUMENT",
+                        });
+                    }
+                }
+            } catch { /* ignore */ }
+
+            const all = [...firestoreDocs, ...storageDocs];
+            setPublicModules(all);
+            calculatePositionCounters(undefined, all);
         } catch (err) {
             console.error("Error loading public modules:", err);
         }
