@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle, Home, Award, Star } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChecklists } from '../../hooks/useChecklists';
+import { useScoringConfig } from '../../hooks/useScoringConfig';
 import ChecklistPanel from '../../components/ChecklistPanel';
 import ShiftScoreCard from '../../components/ShiftScoreCard';
 import { useChecklistNotifications } from '../../hooks/useChecklistNotifications';
@@ -9,7 +10,8 @@ import WorkerHeader from '../../components/WorkerHeader';
 
 export default function HousekeeperApp() {
   const { currentUser, user } = useAuth();
-  const cl = useChecklists('housekeeping');
+  const scoring = useScoringConfig(currentUser?.customerId);
+  const cl = useChecklists('housekeeping', scoring.checklistMinIntervalMinutes || 3);
   useChecklistNotifications({
     activeShift: cl.activeShift,
     checklists: cl.checklists,

@@ -32,7 +32,6 @@ function timePeriodOrder(tp: string) {
   return TIME_ORDER[tp?.toLowerCase()] ?? 99;
 }
 
-const MIN_CHECK_INTERVAL_MS = 3 * 60 * 1000;
 const COOKIE_KEY = 'lastCheckedAt';
 
 function readCookie(): number | null {
@@ -42,13 +41,13 @@ function readCookie(): number | null {
   return isNaN(val) ? null : val;
 }
 
-function writeCookie(ts: number) {
-  // Expire after the max interval so it self-cleans
-  const expires = new Date(ts + MIN_CHECK_INTERVAL_MS * 2);
+function writeCookie(ts: number, intervalMs: number) {
+  const expires = new Date(ts + intervalMs * 2);
   document.cookie = `${COOKIE_KEY}=${ts}; expires=${expires.toUTCString()}; path=/; SameSite=Strict`;
 }
 
-export function useChecklists(role: string) {
+export function useChecklists(role: string, minIntervalMinutes = 3) {
+  const MIN_CHECK_INTERVAL_MS = minIntervalMinutes * 60 * 1000;
   const { activeShift, loading: shiftLoading, submitChecklist } = useWorkerShift();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,7 +220,7 @@ export function useChecklists(role: string) {
         return;
       }
       const now = Date.now();
-      writeCookie(now);
+      writeCookie(now, MIN_CHECK_INTERVAL_MS);
       setLastCheckedAt(now);
     }
 

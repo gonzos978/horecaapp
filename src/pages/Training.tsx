@@ -8,6 +8,7 @@ import { collection, getDocs, deleteDoc, doc, addDoc, serverTimestamp, query, wh
 import { db } from "../fb/firebase.ts";
 import { useAuth } from '../contexts/AuthContext';
 import WorkerHeader from '../components/WorkerHeader';
+import { useScoringConfig } from '../hooks/useScoringConfig';
 
 const ROLE_LABELS: Record<string, string> = {
     waiter:             'Konobar',
@@ -56,8 +57,11 @@ export default function Training() {
     const [file, setFile] = useState<File | null>(null);
     const [fileInputKey, setFileInputKey] = useState(Date.now());
 
+    // ── Scoring config (from settings) ────────────────────────────────────
+    const scoringConfig = useScoringConfig(currentUser?.customerId);
+
     // ── Quiz taking ────────────────────────────────────────────────────────
-    const PASS_PERCENT = 80;
+    const PASS_PERCENT = scoringConfig.passPercent;
     const [activeQuiz, setActiveQuiz] = useState<any | null>(null);
     const [qIndex, setQIndex] = useState(0);
     const [answers, setAnswers] = useState<(number | null)[]>([]);
@@ -69,7 +73,7 @@ export default function Training() {
     const startQuiz = (quiz: any) => {
         const r = myResults[quiz.id];
         const completedMs = r?.completedAt?.seconds ? r.completedAt.seconds * 1000 : null;
-        if (completedMs && Date.now() - completedMs < 24 * 60 * 60 * 1000) return;
+        if (completedMs && Date.now() - completedMs < scoringConfig.testRetryHours * 60 * 60 * 1000) return;
         setActiveQuiz(quiz);
         setQIndex(0);
         setAnswers([]);
@@ -675,12 +679,25 @@ export default function Training() {
                 )}
 
                 <div className="lg:col-span-3">
-                    {selectedPosition ? (
-                        <div className="space-y-4">
+                    {selectedPosition ? (() => {
+                        const allMods = getPositionModules(selectedPosition);
+                        const publicMods = allMods.filter(m => m.isPublic);
+                        const internalMods = allMods.filter(m => !m.isPublic);
+                        return (
+                        <div className="space-y-6">
                             <h2 className="text-xl font-bold text-slate-900">
                                 Moduli za: {positions.find(p => p.code === selectedPosition)?.name_bs}
                             </h2>
-                            {getPositionModules(selectedPosition).map(module => {
+
+                            {/* Public docs */}
+                            {publicMods.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wide">🌐 Javni dokumenti</span>
+                                        <span className="text-xs text-slate-400">{publicMods.length} PDF</span>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {publicMods.map(module => {
                                 const Icon = contentTypeIcons[module.content_type as keyof typeof contentTypeIcons];
                                 return (
                                     <div key={module.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md hover:border-blue-300 transition-all">
@@ -710,11 +727,55 @@ export default function Training() {
                                     </div>
                                 );
                             })}
-                            {getPositionModules(selectedPosition).length === 0 && (
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Internal docs */}
+                            {internalMods.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase tracking-wide">🔒 Interni dokumenti</span>
+                                        <span className="text-xs text-slate-400">{internalMods.length} PDF</span>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {internalMods.map(module => {
+                                            const Icon = contentTypeIcons[module.content_type as keyof typeof contentTypeIcons];
+                                            return (
+                                                <div key={module.id} className="bg-white rounded-xl shadow-sm border border-blue-100 p-6 hover:shadow-md hover:border-blue-300 transition-all">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex items-start gap-4 flex-1">
+                                                            <div className={`p-3 rounded-lg ${contentTypeColors[module.content_type as keyof typeof contentTypeColors]}`}>
+                                                                <Icon className="w-6 h-6" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <h3 className="text-lg font-bold text-slate-900">{module.fileName}</h3>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <a href={module.fileUrl} target="_blank" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm">
+                                                                Otvori
+                                                            </a>
+                                                            {isManager && (
+                                                                <button onClick={() => setDeleteTarget(module)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {allMods.length === 0 && (
                                 <div className="text-center py-12 text-slate-500">Nema dostupnih modula za ovu poziciju</div>
                             )}
                         </div>
-                    ) : (
+                        );
+                    })() : (
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                             <GraduationCap className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                             <p className="text-lg text-slate-600">Izaberite poziciju da vidite dostupne module za obuku</p>

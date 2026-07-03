@@ -19,12 +19,15 @@ import {
     FileQuestion,
     CircleUser,
     InboxIcon,
+    MessageSquare,
+    LogOut,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { collection, query, where, onSnapshot, updateDoc, doc, addDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../fb/firebase";
 import {useLanguage} from "../contexts/LanguageContext";
 import {useAuth} from "../contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 interface NavigationProps {
     currentPage: string;
@@ -40,7 +43,8 @@ export default function Navigation({
                                        onClose,
                                    }: NavigationProps) {
     const {t} = useLanguage();
-    const {currentUser} = useAuth();
+    const {currentUser, logout} = useAuth();
+    const navigate = useNavigate();
     const isWorker = currentUser?.role?.toLowerCase() === "worker";
     const [pendingCount,  setPendingCount]  = useState(0);
     const [pendingReports, setPendingReports] = useState(0);
@@ -178,6 +182,7 @@ export default function Navigation({
         {id: "training", icon: GraduationCap, label: t("nav.training")},
         {id: "anonymousReports", icon: Shield, label: t("nav.anonymousReports")},
         {id: "requests", icon: InboxIcon, label: "Zahtjevi"},
+        {id: "chat", icon: MessageSquare, label: "Chat"},
         {id: "settings", icon: Settings, label: t("nav.settings")},
     ];
 
@@ -261,7 +266,7 @@ export default function Navigation({
                 )}
             </div>
 
-            <nav className="p-4 space-y-1">
+            <nav className="p-4 space-y-1 pb-24 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>
                 {!isWorker && menuItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = currentPage === item.id;
@@ -303,6 +308,7 @@ export default function Navigation({
                         { id: "shift-end",                       icon: StopCircle,    label: "Kraj smjene",      color: "red",     hideOnChecklist: false },
                         { id: "training",                         icon: FileQuestion,  label: "Testovi",          color: "violet",  hideOnChecklist: false },
                         { id: "anonymousReports",                 icon: UserX,         label: "Anonimna prijava", color: "slate",   hideOnChecklist: false },
+                        { id: "chat",                             icon: MessageSquare, label: "Chat",             color: "blue",    hideOnChecklist: false },
                         { id: "myProfile",                        icon: CircleUser,    label: "Moj profil",       color: "blue",    hideOnChecklist: false },
                     ].filter(item => !(item.hideOnChecklist && currentPage === (workerPwaId ?? "home")))
                     .map(({ id, icon: Icon, label, color }) => {
@@ -334,6 +340,28 @@ export default function Navigation({
                 </div>
                 )}
             </nav>
+
+            {/* User info + logout — bottom of sidebar, non-workers only */}
+            {!isWorker && (
+                <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center font-bold text-blue-700 text-sm shrink-0">
+                            {(currentUser?.name || currentUser?.email || "?")[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 truncate">{currentUser?.name || "—"}</p>
+                            <p className="text-xs text-slate-400 truncate capitalize">{currentUser?.role}</p>
+                        </div>
+                        <button
+                            onClick={logout}
+                            title="Odjava"
+                            className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+                        >
+                            <LogOut className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
         </aside>
     );
 }

@@ -48,7 +48,7 @@ export default function WorkerHeader() {
     };
 
     return (
-        <div className="bg-white shadow-md sticky top-0 z-50">
+        <div className="-mx-3 sm:-mx-6 -mt-3 sm:-mt-6 sticky top-0 z-40 bg-white shadow-md">
             <div className="p-4 flex items-center gap-4">
                 <img
                     src="/smarter_horeca_1.jpg"

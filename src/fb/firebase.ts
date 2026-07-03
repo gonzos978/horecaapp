@@ -8,8 +8,8 @@ import {
 } from "firebase/firestore";
 
 import { getStorage } from "firebase/storage";
-
 import { getFunctions } from "firebase/functions";
+import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
 
@@ -55,6 +55,11 @@ export const storage = getStorage(app);
  */
 
 export const functions = getFunctions(app, "us-central1");
+
+/**
+ * ANALYTICS
+ */
+export const analytics = getAnalytics(app);
 
 
 export { serverTimestamp };

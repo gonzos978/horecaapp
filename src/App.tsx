@@ -40,7 +40,7 @@ import HousekeeperApp from "./pages/pwa/HousekeeperApp";
 import ManagerApp from "./pages/pwa/ManagerApp";
 import EditWorker from "./pages/workers/EditWorker.tsx";
 import {useEffect, useState} from "react";
-import { Menu as MenuIcon } from "lucide-react";
+import { Menu as MenuIcon, LogOut } from "lucide-react";
 import AdminEditChecklist from "./pages/admin/AdminEditChecklist.tsx";
 import ChecklistListView from "./pages/admin/ChecklistListView.tsx";
 import AdminAddChecklist from "./pages/admin/AddChecklists.tsx";
@@ -49,6 +49,7 @@ import CreateTest from "./pages/admin/CreateTest.tsx";
 import CreateQuiz from "./pages/manager/CreateQuiz.tsx";
 import ShiftStart from "./pages/worker/ShiftStart.tsx";
 import ShiftEnd from "./pages/worker/ShiftEnd.tsx";
+import Chat from "./pages/Chat.tsx";
 
 // -------------------- ROUTE GUARDS --------------------
 function AdminRoute({ children }: { children: JSX.Element }) {
@@ -65,7 +66,7 @@ function UserRoute({ children }: { children: JSX.Element }) {
     if (!user) return <Navigate to="/admin/login" replace />;
     // Workers go straight to their shift-start screen
     if (currentUser?.role?.toLowerCase() === "worker") {
-        const workerPaths = ["/app/shift-start", "/app/shift-end", "/app/waiter", "/app/cook", "/app/housekeeper", "/app/manager"];
+        const workerPaths = ["/app/shift-start", "/app/shift-end", "/app/waiter", "/app/cook", "/app/housekeeper", "/app/manager", "/app/chat", "/app/training", "/app/anonymousReports", "/app/myProfile"];
         const alreadyOnWorkerPage = workerPaths.some(p => window.location.pathname.startsWith(p));
         if (!alreadyOnWorkerPage) {
             return <Navigate to="/app/shift-start" replace />;
@@ -78,6 +79,7 @@ function UserRoute({ children }: { children: JSX.Element }) {
 function CustomerMainApp() {
     const navigate = useNavigate();
     const location = useLocation();
+    const { currentUser, logout } = useAuth();
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -98,14 +100,25 @@ function CustomerMainApp() {
         <LanguageProvider>
             <div className="min-h-screen bg-slate-50">
                 {/* Mobile header */}
-                <header className="md:hidden flex items-center gap-3 p-4 bg-white border-b">
+                <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b sticky top-0 z-50">
                     <button
                         onClick={() => setSidebarOpen(true)}
-                        className="p-2 rounded-lg hover:bg-slate-100"
+                        className="p-2 rounded-lg hover:bg-slate-100 shrink-0"
                     >
                         <MenuIcon className="w-6 h-6" />
                     </button>
-                    <span className="font-semibold">App</span>
+                    <img src="/smarter_horeca_1.jpg" alt="Logo" className="h-8 w-auto" />
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{currentUser?.name || "Smarter HoReCa"}</p>
+                        <p className="text-xs text-slate-400 capitalize truncate">{currentUser?.role}</p>
+                    </div>
+                    <button
+                        onClick={logout}
+                        title="Odjava"
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition shrink-0"
+                    >
+                        <LogOut className="w-5 h-5" />
+                    </button>
                 </header>
 
                 <Navigation
@@ -123,7 +136,7 @@ function CustomerMainApp() {
                     />
                 )}
 
-                <main className="md:ml-64 p-6">
+                <main className="md:ml-64 p-3 sm:p-6">
                     <Outlet />
                 </main>
             </div>
@@ -204,6 +217,7 @@ export default function App() {
                         <Route path="workerProfile" element={<WorkerProfile />} />
                         <Route path="myProfile" element={<MyProfile />} />
                         <Route path="requests" element={<Requests />} />
+                        <Route path="chat" element={<Chat />} />
                         <Route path="waiter" element={<WaiterApp />} />
                         <Route path="cook" element={<CookApp />} />
                         <Route path="housekeeper" element={<HousekeeperApp />} />

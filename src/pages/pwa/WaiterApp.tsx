@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Clock, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChecklists } from '../../hooks/useChecklists';
+import { useScoringConfig } from '../../hooks/useScoringConfig';
 import ChecklistPanel from '../../components/ChecklistPanel';
 import ShiftScoreCard from '../../components/ShiftScoreCard';
 import { useChecklistNotifications } from '../../hooks/useChecklistNotifications';
@@ -9,7 +10,8 @@ import WorkerHeader from '../../components/WorkerHeader';
 
 export default function WaiterApp() {
   const { currentUser, user } = useAuth();
-  const cl = useChecklists('waiter');
+  const scoring = useScoringConfig(currentUser?.customerId);
+  const cl = useChecklists('waiter', scoring.checklistMinIntervalMinutes || 3);
   const [tips] = useState(45.50);
 
   useChecklistNotifications({
