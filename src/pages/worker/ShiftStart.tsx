@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { PlayCircle, Clock, User, CheckCircle, AlertTriangle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { PlayCircle, Clock, User, CheckCircle, AlertTriangle, MapPin } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useWorkerShift } from "../../hooks/useWorkerShift";
+import WorkerHeader from "../../components/WorkerHeader";
 
 const TYPE_TO_PWA: Record<string, string> = {
     waiter: "waiter",
@@ -12,20 +13,39 @@ const TYPE_TO_PWA: Record<string, string> = {
 };
 
 export default function ShiftStart() {
-    const { currentUser } = useAuth();
+    const { currentUser, loading: authLoading } = useAuth();
     const navigate = useNavigate();
-    const { activeShift, loading, startShift } = useWorkerShift();
+    const { activeShift, loading: shiftLoading, startShift } = useWorkerShift();
+    const loading = authLoading || shiftLoading;
     const [starting, setStarting] = useState(false);
     const [error, setError] = useState("");
+    const [geoStatus, setGeoStatus] = useState<"idle" | "ok" | "denied">("idle");
     const [time] = useState(() =>
         new Date().toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" })
     );
 
     const pwaPage = currentUser?.type ? TYPE_TO_PWA[currentUser.type] ?? "home" : "home";
 
+    // Check geolocation permission on mount
+    useEffect(() => {
+        if (!navigator.geolocation) { setGeoStatus("denied"); return; }
+        navigator.permissions?.query({ name: "geolocation" }).then(r => {
+            if (r.state === "granted") setGeoStatus("ok");
+            else if (r.state === "denied") setGeoStatus("denied");
+        }).catch(() => {});
+    }, []);
+
     const handleStart = async () => {
         setStarting(true);
         setError("");
+        // Trigger browser geo prompt if not yet decided
+        if (geoStatus === "idle") {
+            navigator.geolocation?.getCurrentPosition(
+                () => setGeoStatus("ok"),
+                () => setGeoStatus("denied"),
+                { timeout: 8000 }
+            );
+        }
         try {
             await startShift();
             setTimeout(() => navigate(`/app/${pwaPage}`), 1000);
@@ -38,7 +58,9 @@ export default function ShiftStart() {
     if (loading) return <div className="p-8 text-center text-slate-500">Učitavanje...</div>;
 
     return (
-        <div className="max-w-md mx-auto space-y-6 animate-in fade-in duration-300">
+        <div className="min-h-screen bg-slate-50">
+        <WorkerHeader />
+        <div className="max-w-md mx-auto space-y-6 animate-in fade-in duration-300 p-6">
             {/* Worker card */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 text-center">
                 <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -59,6 +81,18 @@ export default function ShiftStart() {
                     })}
                 </span>
                 <span className="ml-auto font-bold text-slate-900 text-lg">{time}</span>
+            </div>
+
+            {/* Geolocation status */}
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm ${
+                geoStatus === "ok"     ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
+                geoStatus === "denied" ? "bg-amber-50  border-amber-200  text-amber-700"  :
+                                         "bg-slate-50  border-slate-200  text-slate-500"
+            }`}>
+                <MapPin className="w-4 h-4 flex-shrink-0" />
+                {geoStatus === "ok"     ? "Lokacija će biti zabilježena pri početku smjene." :
+                 geoStatus === "denied" ? "Lokacija nije dostupna — smjena će biti snimljena bez GPS-a." :
+                                          "Provjera dozvole za lokaciju..."}
             </div>
 
             {error && (
@@ -98,6 +132,7 @@ export default function ShiftStart() {
                     Počni smjenu
                 </button>
             )}
+        </div>
         </div>
     );
 }

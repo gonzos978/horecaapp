@@ -8,11 +8,8 @@ import {
 } from "firebase/firestore";
 
 import { getStorage } from "firebase/storage";
-
-import {
-    getFunctions,
-    connectFunctionsEmulator
-} from "firebase/functions";
+import { getFunctions } from "firebase/functions";
+import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
 
@@ -57,20 +54,12 @@ export const storage = getStorage(app);
  * FUNCTIONS
  */
 
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, "us-central1");
 
 /**
- * LOCAL EMULATOR
- * OPTIONAL
+ * ANALYTICS
  */
+export const analytics = getAnalytics(app);
 
-if (window.location.hostname === "localhost") {
-
-    connectFunctionsEmulator(
-        functions,
-        "127.0.0.1",
-        5001
-    );
-}
 
 export { serverTimestamp };

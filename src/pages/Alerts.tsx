@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Bell, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import Header from '../components/Header';
 
 export default function Alerts() {
   const { t, language } = useLanguage();
@@ -50,7 +49,6 @@ export default function Alerts() {
 
   return (
     <div className="space-y-6">
-      <Header title={t('alerts.title')} subtitle={`${unreadCount} ${t('alerts.unread').toLowerCase()}`} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {Object.entries(severityConfig).map(([severity, config]) => {

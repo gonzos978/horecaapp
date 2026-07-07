@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { CheckCircle, Home, Award, Star } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChecklists } from '../../hooks/useChecklists';
+import { useScoringConfig } from '../../hooks/useScoringConfig';
 import ChecklistPanel from '../../components/ChecklistPanel';
 import ShiftScoreCard from '../../components/ShiftScoreCard';
 import { useChecklistNotifications } from '../../hooks/useChecklistNotifications';
+import WorkerHeader from '../../components/WorkerHeader';
 
 export default function HousekeeperApp() {
   const { currentUser, user } = useAuth();
-  const cl = useChecklists('housekeeping');
+  const scoring = useScoringConfig(currentUser?.customerId);
+  const cl = useChecklists('housekeeping', scoring.checklistMinIntervalMinutes || 3);
   useChecklistNotifications({
     activeShift: cl.activeShift,
     checklists: cl.checklists,
@@ -28,16 +31,7 @@ export default function HousekeeperApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50">
-      <div className="bg-white shadow-md sticky top-0 z-50">
-        <div className="p-4 flex items-center gap-4">
-          <img src="/smarter_horeca_1.jpg" alt="Smarter HoReCA Logo" className="h-16 w-auto" />
-          <div className="flex-1">
-            <h1 className="text-xl font-bold text-slate-900">Smarter HoReCA</h1>
-            <p className="text-sm text-purple-600 font-semibold">Sobarica</p>
-            <p className="text-xs text-slate-600">{currentUser?.name}</p>
-          </div>
-        </div>
-      </div>
+      <WorkerHeader />
 
       <div className="p-4 space-y-4">
         {/* Rooms */}

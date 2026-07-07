@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { Clock, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChecklists } from '../../hooks/useChecklists';
+import { useScoringConfig } from '../../hooks/useScoringConfig';
 import ChecklistPanel from '../../components/ChecklistPanel';
 import ShiftScoreCard from '../../components/ShiftScoreCard';
 import { useChecklistNotifications } from '../../hooks/useChecklistNotifications';
+import WorkerHeader from '../../components/WorkerHeader';
 
 export default function WaiterApp() {
   const { currentUser, user } = useAuth();
-  const cl = useChecklists('waiter');
+  const scoring = useScoringConfig(currentUser?.customerId);
+  const cl = useChecklists('waiter', scoring.checklistMinIntervalMinutes || 3);
   const [tips] = useState(45.50);
 
   useChecklistNotifications({
@@ -25,16 +28,7 @@ export default function WaiterApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100">
-      <div className="bg-white shadow-md sticky top-0 z-50">
-        <div className="p-4 flex items-center gap-4">
-          <img src="/smarter_horeca_1.jpg" alt="Smarter HoReCA Logo" className="h-16 w-auto" />
-          <div className="flex-1">
-            <h1 className="text-xl font-bold text-slate-900">Smarter HoReCA</h1>
-            <p className="text-sm text-blue-600 font-semibold">Konobar</p>
-            <p className="text-xs text-slate-600">{currentUser?.name}</p>
-          </div>
-        </div>
-      </div>
+      <WorkerHeader />
 
       <div className="p-4 space-y-4">
         {/* Shift Info */}
@@ -64,14 +58,6 @@ export default function WaiterApp() {
         {/* Checklists */}
         <ChecklistPanel {...cl} accentColor="blue" emptyMessage="Nema aktivnih lista za konobara." />
 
-        {/* Anonymous Report */}
-        <div className="bg-white rounded-xl shadow-md p-5">
-          <h2 className="text-lg font-bold text-slate-900 mb-3">Anonimna Prijava</h2>
-          <button className="w-full bg-slate-900 text-white rounded-lg py-3 font-semibold hover:bg-slate-800 transition-colors">
-            Pošalji Prijavu (Anonimno)
-          </button>
-          <p className="text-xs text-slate-500 mt-2 text-center">Vaša identitet ostaje sakriven</p>
-        </div>
       </div>
     </div>
   );

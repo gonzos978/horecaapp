@@ -32,7 +32,6 @@ function timePeriodOrder(tp: string) {
   return TIME_ORDER[tp?.toLowerCase()] ?? 99;
 }
 
-const MIN_CHECK_INTERVAL_MS = 3 * 60 * 1000;
 const COOKIE_KEY = 'lastCheckedAt';
 
 function readCookie(): number | null {
@@ -42,13 +41,13 @@ function readCookie(): number | null {
   return isNaN(val) ? null : val;
 }
 
-function writeCookie(ts: number) {
-  // Expire after the max interval so it self-cleans
-  const expires = new Date(ts + MIN_CHECK_INTERVAL_MS * 2);
+function writeCookie(ts: number, intervalMs: number) {
+  const expires = new Date(ts + intervalMs * 2);
   document.cookie = `${COOKIE_KEY}=${ts}; expires=${expires.toUTCString()}; path=/; SameSite=Strict`;
 }
 
-export function useChecklists(role: string) {
+export function useChecklists(role: string, minIntervalMinutes = 3) {
+  const MIN_CHECK_INTERVAL_MS = minIntervalMinutes * 60 * 1000;
   const { activeShift, loading: shiftLoading, submitChecklist } = useWorkerShift();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,7 +220,7 @@ export function useChecklists(role: string) {
         return;
       }
       const now = Date.now();
-      writeCookie(now);
+      writeCookie(now, MIN_CHECK_INTERVAL_MS);
       setLastCheckedAt(now);
     }
 
@@ -274,13 +273,32 @@ export function useChecklists(role: string) {
       const newSubmitted = new Set(submitted).add(cl.id);
       setSubmitted(newSubmitted);
 
-      // Recalculate and persist score to the shift document
-      const total = checklistsRef.current.length;
+      // ── Score calculation ──────────────────────────────
+      const allLists = checklistsRef.current;
+      const total = allLists.length;
       const completedCount = newSubmitted.size;
-      const score = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+      // 60 pts: checklist completion rate
+      const checklistRate = total > 0 ? Math.round((completedCount / total) * 60) : 0;
+
+      // 30 pts: item thoroughness — checked items across all submitted lists
+      const submittedLists = allLists.filter((c) => newSubmitted.has(c.id));
+      const totalItemsAll = submittedLists.flatMap((c) => c.zones.flatMap((z) => z.items)).length;
+      const checkedItemsAll = submittedLists.flatMap((c) => c.zones.flatMap((z) => z.items)).filter((i) => i.completed).length;
+      const itemRate = totalItemsAll > 0 ? Math.round((checkedItemsAll / totalItemsAll) * 30) : 0;
+
+      // 10 pts: punctuality — read remindersReceived from shift doc
+      // We don't have it in local state, so we store it separately and read it on shift end
+      // For now save checklistRate + itemRate; punctuality is added on shift end
+      const scorePartial = checklistRate + itemRate;
 
       await updateDoc(doc(db, 'shifts', activeShift.id), {
-        score,
+        score: scorePartial,
+        scoreBreakdown: {
+          checklistRate,
+          itemRate,
+          // punctualityScore filled on shift end when remindersReceived is known
+        },
         checklistsTotal: total,
         checklistsCompleted: completedCount,
         scoreUpdatedAt: serverTimestamp(),

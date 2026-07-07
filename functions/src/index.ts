@@ -1,9 +1,10 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import {onObjectFinalized} from "firebase-functions/storage";
 import {getStorage} from "firebase-admin/storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import {getFirestore} from "firebase-admin/firestore";
+import { VertexAI } from "@google-cloud/vertexai";
 
 
 if (!admin.apps.length) {
@@ -12,7 +13,8 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-const genAI = new GoogleGenerativeAI("AIzaSyBm5ioCwKtsY5AghnXTwlWwsNgaK94LM7s");
+const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAuweguPGysCbQFhctYt5UI8YAzxaYzdtI";
+const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
 /**
  * =========================================================
@@ -35,83 +37,54 @@ async function getRequester(uid: string) {
  * =========================================================
  */
 
-export const createCustomer = onCall(
-    {
-        cors: true,
-        timeoutSeconds: 60,
-        memory: "512MiB",
-    },
-
-
-
-    async (request) => {
-        console.log("FUNCTION HIT");
-        // 1. Inline Auth Check (Fixes TS18048 completely)
-        if (!request.auth) {
-            throw new HttpsError(
-                "unauthenticated",
-                "User must be logged in"
-            );
-        }
-        console.log("createCustomer.....");
-        const uid = request.auth.uid;
-        const requester = await getRequester(uid);
-
-        if (!requester) {
-            throw new HttpsError(
-                "permission-denied",
-                "User not found"
-            );
-        }
-        console.log("ROLE: ", requester.type)
-        if (requester.type !== "SUPER_ADMIN") {
-            throw new HttpsError(
-                "permission-denied",
-                "Only super admins allowed"
-            );
+export const createCustomer = onRequest(
+    { cors: true, invoker: "public", timeoutSeconds: 60, memory: "512MiB" },
+    async (req, res) => {
+        if (req.method === "OPTIONS") {
+            res.set("Access-Control-Allow-Origin", "*");
+            res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+            res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            res.status(204).send("");
+            return;
         }
 
-        // Added fallback empty object to protect against destructuring undefined
-        const {
-            customerName,
-            businessType,
-            address,
-            phone,
-            adminName,
-            adminEmail,
-            adminPassword,
-        } = request.data || {};
-
-        if (
-            !customerName ||
-            !adminEmail ||
-            !adminPassword
-        ) {
-            throw new HttpsError(
-                "invalid-argument",
-                "Missing required fields"
-            );
-        }
+        res.set("Access-Control-Allow-Origin", "*");
 
         try {
-            /**
-             * 🔥 CUSTOMER ID
-             */
+            // Verify Firebase ID token
+            const authHeader = req.headers.authorization || "";
+            const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+            if (!token) { res.status(401).json({ error: "Unauthenticated" }); return; }
+
+            const decoded = await admin.auth().verifyIdToken(token);
+            const uid = decoded.uid;
+            const requester = await getRequester(uid);
+
+            if (!requester || requester.type !== "SUPER_ADMIN") {
+                res.status(403).json({ error: "Only super admins allowed" });
+                return;
+            }
+
+            const {
+                customerName, businessType, locationName, locationId,
+                address, city, country, contactFirstName, contactLastName,
+                phone, email, website, gps, capacity, notes, adminName, adminEmail, adminPassword,
+            } = req.body;
+
+            if (!customerName || !adminEmail || !adminPassword) {
+                res.status(400).json({ error: "Missing required fields" });
+                return;
+            }
+
             const customerRef = db.collection("customers").doc();
             const customerId = customerRef.id;
 
-            /**
-             * 👤 CREATE AUTH USER (MANAGER)
-             */
             const userRecord = await admin.auth().createUser({
                 email: adminEmail,
                 password: adminPassword,
-                displayName: adminName || "",
+                displayName: adminName || customerName,
             });
 
-            /**
-             * 🧠 MANAGER DATA
-             */
             const managerData = {
                 uid: userRecord.uid,
                 customerId,
@@ -124,17 +97,25 @@ export const createCustomer = onCall(
                 createdAt: new Date().toISOString(),
             };
 
-            /**
-             * ⚡ BATCH WRITE
-             */
             const batch = db.batch();
 
             batch.set(customerRef, {
                 id: customerId,
                 customerName,
-                businessType,
+                businessType: businessType || "",
+                locationName: locationName || "",
+                locationId: locationId || null,
                 address: address || "",
+                city: city || "",
+                country: country || "",
+                contactFirstName: contactFirstName || "",
+                contactLastName: contactLastName || "",
                 phone: phone || "",
+                email: email || "",
+                website: website || "",
+                gps: gps || null,
+                capacity: capacity || null,
+                notes: notes || "",
                 status: "ACTIVE",
                 plan: "FREE",
                 createdAt: new Date().toISOString(),
@@ -142,44 +123,155 @@ export const createCustomer = onCall(
             });
 
             batch.set(
-                db
-                    .collection("customers")
-                    .doc(customerId)
-                    .collection("managers")
-                    .doc(userRecord.uid),
+                db.collection("customers").doc(customerId).collection("managers").doc(userRecord.uid),
                 managerData
             );
-
-            batch.set(
-                db.collection("users").doc(userRecord.uid),
-                managerData
-            );
+            batch.set(db.collection("users").doc(userRecord.uid), managerData);
 
             await batch.commit();
 
-            return {
-                success: true,
-                customerId,
-                managerUid: userRecord.uid,
+            res.status(200).json({ success: true, customerId, managerUid: userRecord.uid });
+        } catch (error: any) {
+            console.error("createCustomer error:", error);
+            if (error.code === "auth/email-already-exists") {
+                res.status(409).json({ error: "Email already exists" });
+                return;
+            }
+            res.status(500).json({ error: error?.message || "Failed to create customer" });
+        }
+    }
+);
+
+/**
+ * =========================================================
+ * CREATE WORKER (called by manager from PWA)
+ * Uses Admin SDK — bypasses Firestore security rules entirely.
+ * =========================================================
+ */
+export const createWorker = onCall(
+    { cors: true, invoker: "public", timeoutSeconds: 60, memory: "256MiB" },
+    async (request) => {
+        if (!request.auth) {
+            throw new HttpsError("unauthenticated", "Login required");
+        }
+
+        const requester = await getRequester(request.auth.uid);
+        if (!requester) {
+            throw new HttpsError("permission-denied", "Requester not found");
+        }
+
+        const requesterRole: string = (requester.role ?? "").toLowerCase();
+        if (!["manager", "customer", "admin"].includes(requesterRole) && requester.type !== "SUPER_ADMIN") {
+            throw new HttpsError("permission-denied", "Only managers or customers can create workers");
+        }
+
+        const { name, email, password, phone, address, type } = request.data || {};
+
+        if (!name || !email || !password) {
+            throw new HttpsError("invalid-argument", "name, email and password are required");
+        }
+
+        // Derive role from position type
+        const MANAGER_TYPES = ["hotel_manager", "restaurant_manager", "manager"];
+        const newRole = MANAGER_TYPES.includes(type ?? "") ? "manager" : "worker";
+
+        try {
+            // 1. Create Firebase Auth account (admin SDK — doesn't sign out the caller)
+            const userRecord = await admin.auth().createUser({
+                email,
+                password,
+                displayName: name,
+            });
+
+            // 2. Build Firestore doc with all defaults
+            const now = admin.firestore.FieldValue.serverTimestamp();
+            const userData: Record<string, any> = {
+                uid: userRecord.uid,
+                name,
+                email,
+                phone: phone ?? "",
+                address: address ?? "",
+                type: type ?? "waiter",
+                role: newRole,
+                isAdmin: false,
+                customerId: requester.customerId ?? null,
+                customerName: requester.customerName ?? null,
+                createdAt: now,
+                active: true,
+                training: false,
+                trainingScore: 0,
+                workerStats: {
+                    overallScore: 0,
+                    lastShiftScore: 0,
+                    lastShiftDate: null,
+                    shiftsCount: 0,
+                    recentScores: [],
+                    updatedAt: now,
+                },
             };
 
+            // 3. Write to users collection keyed by Firebase Auth UID
+            await db.collection("users").doc(userRecord.uid).set(userData);
+
+            return { success: true, uid: userRecord.uid };
+
         } catch (error: any) {
-            console.error("Create Customer Error:", error);
+            console.error("createWorker error:", error);
 
             if (error.code === "auth/email-already-exists") {
-                throw new HttpsError(
-                    "already-exists",
-                    "Email already exists"
-                );
+                throw new HttpsError("already-exists", "Email already in use");
+            }
+            if (error instanceof HttpsError) throw error;
+            throw new HttpsError("internal", error?.message || "Failed to create worker");
+        }
+    }
+);
+
+/**
+ * DELETE WORKER
+ */
+export const deleteWorker = onCall(
+    { cors: true, invoker: "public", timeoutSeconds: 60, memory: "256MiB" },
+    async (request) => {
+        if (!request.auth) throw new HttpsError("unauthenticated", "Login required");
+
+        const requester = await getRequester(request.auth.uid);
+        if (!requester) throw new HttpsError("permission-denied", "Requester not found");
+
+        const requesterRole = (requester.role ?? "").toLowerCase();
+        if (!["manager", "customer", "admin"].includes(requesterRole) && requester.type !== "SUPER_ADMIN") {
+            throw new HttpsError("permission-denied", "Only managers or customers can delete workers");
+        }
+
+        const { email, uid } = request.data || {};
+        if (!uid && !email) throw new HttpsError("invalid-argument", "uid or email is required");
+
+        try {
+            // Delete Firestore doc — new workers keyed by uid, old ones by email
+            if (uid) {
+                await db.collection("users").doc(uid).delete();
+                // Also try email-keyed doc for old workers
+                if (email) {
+                    try { await db.collection("users").doc(email).delete(); } catch (_) {}
+                }
+            } else {
+                await db.collection("users").doc(email).delete();
             }
 
-            // Fallthrough security: Ensure custom errors aren't masked as 500s
-            if (error instanceof HttpsError) throw error;
+            // Delete Firebase Auth account
+            if (uid) {
+                try { await admin.auth().deleteUser(uid); } catch (_) {}
+            } else if (email) {
+                try {
+                    const authUser = await admin.auth().getUserByEmail(email);
+                    await admin.auth().deleteUser(authUser.uid);
+                } catch (_) {}
+            }
 
-            throw new HttpsError(
-                "internal",
-                error?.message || "Failed to create customer"
-            );
+            return { success: true };
+        } catch (error: any) {
+            if (error instanceof HttpsError) throw error;
+            throw new HttpsError("internal", error?.message || "Failed to delete worker");
         }
     }
 );
@@ -346,6 +438,7 @@ export const deleteUser = onCall(
 export const generateQuestions = onCall(
     {
         cors: true,
+        invoker: "public",
         timeoutSeconds: 120,
         memory: "1GiB",
     },
@@ -366,17 +459,16 @@ export const generateQuestions = onCall(
         const numQuestions = Math.min(Math.max(Number(count) || 5, 1), 50);
 
         try {
-            // 1. Download PDF from Storage (admin SDK, default bucket)
+            // 1. Download PDF from Storage (admin SDK, explicit bucket)
             console.log(`generateQuestions: downloading ${pdfPath}`);
-            const bucket = getStorage().bucket();
+            const bucket = getStorage().bucket("horecaapp-e16cf.firebasestorage.app");
             const [buffer] = await bucket.file(pdfPath).download();
             console.log(`generateQuestions: downloaded ${buffer.length} bytes`);
 
             // 2. Extract text
             console.log("generateQuestions: extracting text from PDF");
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const pdfMod = require("pdf-parse");
-            const pdfParse = pdfMod.default ?? pdfMod;
+            const pdfParse = require("pdf-parse");
             const data = await pdfParse(buffer);
             const text = (data.text || "").trim();
             console.log(`generateQuestions: extracted ${text.length} chars`);
@@ -477,8 +569,9 @@ ${text.slice(0, 30000)}
  */
 
 export const generateTestFromPDF = onObjectFinalized({
-    cpu: 2, // AI tasks need more power
-    memory: "1GiB"
+    cpu: 2,
+    memory: "1GiB",
+    bucket: "horecaapp-e16cf.firebasestorage.app",
 }, async (event) => {
     const filePath = event.data.name; // e.g., "pdfs/lesson1.pdf"
 
@@ -494,8 +587,8 @@ export const generateTestFromPDF = onObjectFinalized({
 
         // 3. Extract Text
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pdf = require("pdf-parse");
-        const data = await pdf(buffer);
+        const pdfParse = require("pdf-parse");
+        const data = await pdfParse(buffer);
         const extractedText = data.text;
 
         // 4. Send to AI Agent
@@ -519,5 +612,44 @@ export const generateTestFromPDF = onObjectFinalized({
 
     } catch (error) {
         console.error("AI Generation Error:", error);
+    }
+});
+
+// =========================================================
+// ANA CHAT — Gemini-powered AI assistant
+// =========================================================
+const ANA_SYSTEM = `Ti si Ana, AI asistent za Smarter HoReCa platformu — vodeće rješenje za upravljanje hotelima, restoranima, kaféima i cateringom u regiji.
+Pomažeš menadžerima i vlasnicima ugostiteljskih objekata sa: upravljanjem osobljem, smjenama, godišnjim odmorima, obukama, inventarom, menijima i anonimnim prijavama.
+Uvijek odgovaraj ljubazno, profesionalno i kratko. Odgovaraj na istom jeziku kojim ti se korisnik obraća.`;
+
+const vertexAI = new VertexAI({ project: "horecaapp-e16cf", location: "us-central1" });
+
+export const anaChat = onCall({ cors: true, invoker: "public" }, async (request) => {
+    const { message, history } = request.data as {
+        message: string;
+        history: { role: string; text: string }[];
+    };
+
+    if (!message?.trim()) throw new HttpsError("invalid-argument", "Message is required");
+
+    try {
+        const model = vertexAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            systemInstruction: { role: "system", parts: [{ text: ANA_SYSTEM }] },
+        });
+
+        const chat = model.startChat({
+            history: (history ?? []).map((m: any) => ({
+                role: m.role === "user" ? "user" : "model",
+                parts: [{ text: m.text }],
+            })),
+        });
+
+        const result = await chat.sendMessage([{ text: message }]);
+        const reply = result.response.candidates?.[0]?.content?.parts?.[0]?.text ?? "Nema odgovora.";
+        return { reply };
+    } catch (err: any) {
+        console.error("anaChat error:", err?.message ?? err);
+        throw new HttpsError("internal", err?.message ?? "Gemini error");
     }
 });

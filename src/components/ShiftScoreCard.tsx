@@ -4,14 +4,16 @@ interface Props {
   score: number;
   checklistsCompleted: number;
   checklistsTotal: number;
+  greenThreshold?: number;
+  amberThreshold?: number;
 }
 
-export default function ShiftScoreCard({ score, checklistsCompleted, checklistsTotal }: Props) {
+export default function ShiftScoreCard({ score, checklistsCompleted, checklistsTotal, greenThreshold = 90, amberThreshold = 50 }: Props) {
   if (checklistsTotal === 0) return null;
 
   const color =
-    score === 100 ? 'emerald' :
-    score >= 50   ? 'amber'   : 'red';
+    score >= greenThreshold ? 'emerald' :
+    score >= amberThreshold ? 'amber'   : 'red';
 
   const ring  = { emerald: 'ring-emerald-400', amber: 'ring-amber-400', red: 'ring-red-400' }[color];
   const bg    = { emerald: 'bg-emerald-50',    amber: 'bg-amber-50',    red: 'bg-red-50'    }[color];
@@ -21,9 +23,9 @@ export default function ShiftScoreCard({ score, checklistsCompleted, checklistsT
   const track = { emerald: 'bg-emerald-200',   amber: 'bg-amber-200',   red: 'bg-red-200'    }[color];
 
   const label =
-    score === 100 ? 'Odlično! Sve liste završene.' :
-    score >= 50   ? 'U toku — nastavi tako.' :
-                    'Nedovršene liste — potrudi se.';
+    score >= greenThreshold ? 'Odlično! Sve liste završene.' :
+    score >= amberThreshold ? 'U toku — nastavi tako.' :
+                              'Nedovršene liste — potrudi se.';
 
   return (
     <div className={`${bg} rounded-xl shadow-sm p-5 ring-2 ${ring}`}>

@@ -33,10 +33,32 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 import "./../../styles/UploadDocuments.css";
 
+const ROLE_LABELS: Record<string, string> = {
+    waiter:             'Konobar',
+    cook:               'Kuvar',
+    housekeeping:       'Sobarica',
+    manager:            'Menadžer',
+    barman:             'Šanker',
+    hotel_manager:      'Menadžer hotela',
+    restaurant_manager: 'Menadžer restorana',
+    executive_chef:     'Glavni kuvar',
+    sous_cook:          'Pomoćni kuvar',
+    mixologist:         'Koktel majstor',
+    bartender:          'Šanker (bar)',
+    busser:             'Servirka',
+    housekeeper:        'Sobarica (sobe)',
+    night_security:     'Noćni čuvar',
+    cleaner:            'Higijeničarka',
+    maintenance:        'Domar',
+    groundskeeper:      'Vrtlar',
+    spa_staff:          'SPA osoblje',
+};
+
 export default function UploadDocuments() {
     const { user, isSuperAdmin } = useAuth();
 
     const [file, setFile] = useState<File | null>(null);
+    const [workerType, setWorkerType] = useState<string>("");
     const [progress, setProgress] = useState(0);
     const [loading, setLoading] = useState(false);
 
@@ -91,6 +113,10 @@ export default function UploadDocuments() {
             alert("Please select a file");
             return;
         }
+        if (!workerType) {
+            alert("Please select a worker type");
+            return;
+        }
 
         if (!user) return;
 
@@ -132,7 +158,7 @@ export default function UploadDocuments() {
                             uploadTask.snapshot.ref
                         );
 
-                    await addDoc(
+                    const docRef = await addDoc(
                         collection(db, "documents"),
                         {
                             fileName: file.name,
@@ -141,11 +167,27 @@ export default function UploadDocuments() {
                             contentType: file.type,
                             uploadedBy: user.email,
                             ownerId: user.uid,
+                            workerType,
+                            isPublic: true,
                             createdAt: serverTimestamp(),
                         }
                     );
 
+                    setDocuments(prev => [{
+                        id: docRef.id,
+                        fileName: file.name,
+                        fileUrl: downloadURL,
+                        filePath: storagePath,
+                        contentType: file.type,
+                        uploadedBy: user.email,
+                        ownerId: user.uid,
+                        workerType,
+                        isPublic: true,
+                        createdAt: new Date(),
+                    }, ...prev]);
+
                     setFile(null);
+                    setWorkerType("");
                     setProgress(0);
                     setLoading(false);
                 }
@@ -281,6 +323,20 @@ export default function UploadDocuments() {
                                 PDF, DOCX or text files
                             </p>
                         </div>
+                    </div>
+
+                    <div className="mb-4">
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Tip radnika</label>
+                        <select
+                            value={workerType}
+                            onChange={e => setWorkerType(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        >
+                            <option value="">— Odaberite tip radnika —</option>
+                            {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                                <option key={value} value={value}>{label} ({value})</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div className="grid md:grid-cols-[1fr_auto] gap-4 items-center">
@@ -429,11 +485,16 @@ export default function UploadDocuments() {
                                                 </h3>
 
                                                 <p className="text-sm text-slate-500 mt-1 truncate">
-                                                    Uploaded by{" "}
-                                                    {
-                                                        docItem.uploadedBy
-                                                    }
+                                                    Uploaded by {docItem.uploadedBy}
                                                 </p>
+                                                {docItem.workerType && (
+                                                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold">
+                                                        {ROLE_LABELS[docItem.workerType] ?? docItem.workerType}
+                                                    </span>
+                                                )}
+                                                <span className="inline-block mt-1 ml-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                                    Public
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
